@@ -10,8 +10,10 @@ env/
 # Environment and local secret files
 .env
 .env.*
+!.env.example
 *.secret
 secrets.*
+context_internal.md
 
 # Local logs and reports
 *.log
