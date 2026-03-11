@@ -79,13 +79,13 @@ curl -X POST http://127.0.0.1:8000/v1/session-blocks:build \
       {
         "messageId": "msg_1",
         "role": "user",
-        "content": "Redis connection error happened",
+        "content": "API 서버를 시작할 때 Redis 연결 오류가 발생했다",
         "timestamp": "2026-03-11T10:00:00Z"
       },
       {
         "messageId": "msg_2",
         "role": "assistant",
-        "content": "Try changing the redis host and test again",
+        "content": "Redis 호스트 설정을 바꿔보고 다시 테스트해보자",
         "timestamp": "2026-03-11T10:01:00Z"
       }
     ]
@@ -106,7 +106,7 @@ curl -X POST http://127.0.0.1:8000/v1/session-blocks:build \
       {
         "messageId": "msg_3",
         "role": "user",
-        "content": "same redis error continues",
+        "content": "같은 Redis 오류가 계속 발생한다",
         "timestamp": "2026-03-11T10:02:00Z"
       }
     ],
@@ -115,12 +115,12 @@ curl -X POST http://127.0.0.1:8000/v1/session-blocks:build \
         "blockId": "blk_existing",
         "messageIds": ["msg_1", "msg_2"],
         "tags": {
-          "PROBLEM": "Redis connection error happened"
+          "PROBLEM": "API 서버를 시작할 때 Redis 연결 오류가 발생했다"
         },
         "lastMessage": {
           "messageId": "msg_2",
           "role": "assistant",
-          "content": "same redis error",
+          "content": "같은 Redis 오류가 발생한다",
           "timestamp": "2026-03-11T10:01:00Z"
         }
       }
@@ -229,7 +229,7 @@ sudo systemctl status mcp
 ```bash
 curl -X POST http://127.0.0.1:8000/v1/session-blocks:build \
   -H "Content-Type: application/json" \
-  -d '{"sessionId":"sess_1","analysisMode":"FULL","messages":[{"messageId":"msg_1","role":"user","content":"hello","timestamp":"2026-03-11T10:00:00Z"}]}'
+  -d '{"sessionId":"sess_1","analysisMode":"FULL","messages":[{"messageId":"msg_1","role":"user","content":"테스트 메시지","timestamp":"2026-03-11T10:00:00Z"}]}'
 ```
 
 3. 테스트 실행

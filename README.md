@@ -18,6 +18,7 @@
 - [환경변수 예시](./.env.example)
 - [FULL 요청 예제](./examples/full_build_request.json)
 - [INCREMENTAL 요청 예제](./examples/incremental_build_request.json)
+- [Ollama 애매 구간 요청 예제](./examples/ollama_ambiguous_request.json)
 - [개발 계획](./mcp_dev_plan.md)
 - [상위 기획 문서](./plan.md)
 
@@ -31,7 +32,7 @@ uvicorn mcp.main:app --app-dir src --host 0.0.0.0 --port 8000
 
 기본 테스트
 ```bash
-PYTHONPATH=src python -m unittest discover -s tests -v
+PYTHONPATH=src .venv/bin/python -m unittest discover -s tests -v
 ```
 
 우분투 서버 점검

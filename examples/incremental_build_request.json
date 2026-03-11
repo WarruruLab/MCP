@@ -5,7 +5,7 @@
     {
       "messageId": "msg_3",
       "role": "user",
-      "content": "same redis error continues",
+      "content": "같은 Redis 오류가 계속 발생한다",
       "timestamp": "2026-03-11T10:02:00Z"
     }
   ],
@@ -17,12 +17,12 @@
         "msg_2"
       ],
       "tags": {
-        "PROBLEM": "Redis connection error happened"
+        "PROBLEM": "API 서버를 시작할 때 Redis 연결 오류가 발생했다"
       },
       "lastMessage": {
         "messageId": "msg_2",
         "role": "assistant",
-        "content": "same redis error",
+        "content": "같은 Redis 오류가 발생한다",
         "timestamp": "2026-03-11T10:01:00Z"
       }
     }

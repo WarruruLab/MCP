@@ -5,13 +5,13 @@
     {
       "messageId": "msg_1",
       "role": "user",
-      "content": "Redis connection error happened",
+      "content": "API 서버를 시작할 때 Redis 연결 오류가 발생했다",
       "timestamp": "2026-03-11T10:00:00Z"
     },
     {
       "messageId": "msg_2",
       "role": "assistant",
-      "content": "Try changing the redis host and test again",
+      "content": "Redis 호스트 설정을 바꿔보고 다시 테스트해보자",
       "timestamp": "2026-03-11T10:01:00Z"
     }
   ]

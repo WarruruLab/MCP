@@ -17,17 +17,17 @@ class SummarizeTests(unittest.TestCase):
     def test_summarize_block_extracts_problem_trial_solution_and_insight(self) -> None:
         tags = summarize_block(
             [
-                ("msg_1", "Redis connection error happened in dev server."),
-                ("msg_2", "I tried changing the redis host config and tested again."),
-                ("msg_3", "The issue was resolved because docker compose network name was wrong."),
+                ("msg_1", "개발 서버에서 Redis 연결 오류가 발생했다."),
+                ("msg_2", "Redis 호스트 설정을 바꿔보고 다시 테스트했다."),
+                ("msg_3", "Docker Compose 네트워크 이름이 잘못된 것이 원인이어서 문제가 해결됐다."),
             ]
         )
 
-        self.assertIn("Redis connection error", tags["PROBLEM"])
+        self.assertIn("Redis 연결 오류", tags["PROBLEM"])
         self.assertEqual(1, len(tags["TRIAL"]))
-        self.assertIn("tried changing", tags["TRIAL"][0])
-        self.assertIn("resolved", tags["SOLUTION"])
-        self.assertIn("because", tags["INSIGHT"])
+        self.assertIn("설정을 바꿔보고", tags["TRIAL"][0])
+        self.assertIn("해결됐다", tags["SOLUTION"])
+        self.assertIn("원인", tags["INSIGHT"])
 
     def test_extract_code_snippets_collects_fenced_code_and_shell_commands(self) -> None:
         snippets = extract_code_snippets(
@@ -53,7 +53,7 @@ class BuilderTests(unittest.TestCase):
                 {
                     "messageId": "msg_3",
                     "role": "user",
-                    "content": "same redis error continues",
+                    "content": "같은 Redis 오류가 계속 발생한다",
                     "timestamp": "2026-03-11T10:02:00Z",
                 }
             ],
@@ -61,11 +61,11 @@ class BuilderTests(unittest.TestCase):
                 {
                     "blockId": "blk_existing",
                     "messageIds": ["msg_1", "msg_2"],
-                    "tags": {"PROBLEM": "runtime error reported"},
+                    "tags": {"PROBLEM": "Redis 연결 오류가 발생했다"},
                     "lastMessage": {
                         "messageId": "msg_2",
                         "role": "assistant",
-                        "content": "same redis error",
+                        "content": "같은 Redis 오류가 발생한다",
                         "timestamp": "2026-03-11T10:01:00Z",
                     },
                 }
@@ -94,7 +94,7 @@ class ApiTests(unittest.TestCase):
                     {
                         "messageId": "msg_1",
                         "role": "user",
-                        "content": "hello",
+                        "content": "테스트 메시지",
                         "timestamp": "2026-03-11T10:00:00Z",
                     }
                 ],

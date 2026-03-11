@@ -1,0 +1,24 @@
+{
+  "sessionId": "sess_ollama_test",
+  "analysisMode": "FULL",
+  "messages": [
+    {
+      "messageId": "msg_1",
+      "role": "user",
+      "content": "API 서버를 시작할 때 Redis 연결 문제가 생긴다",
+      "timestamp": "2026-03-11T10:00:00Z"
+    },
+    {
+      "messageId": "msg_2",
+      "role": "assistant",
+      "content": "Redis 호스트와 Docker 네트워크 설정을 확인해보자",
+      "timestamp": "2026-03-11T10:01:00Z"
+    },
+    {
+      "messageId": "msg_3",
+      "role": "user",
+      "content": "API는 이제 뜨지만 websocket 인증도 같이 확인해야 할 것 같다",
+      "timestamp": "2026-03-11T10:02:00Z"
+    }
+  ]
+}
