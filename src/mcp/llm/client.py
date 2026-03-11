@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import os
 from dataclasses import dataclass
+from typing import Optional
 from urllib import error, request
 
 
@@ -16,9 +17,9 @@ class LlmDecision:
 class LlmClient:
     def __init__(
         self,
-        model: str | None = None,
-        base_url: str | None = None,
-        timeout_seconds: float | None = None,
+        model: Optional[str] = None,
+        base_url: Optional[str] = None,
+        timeout_seconds: Optional[float] = None,
     ) -> None:
         self.model = model or os.getenv("OLLAMA_MODEL", "qwen2.5:3b")
         self.base_url = (base_url or os.getenv("OLLAMA_BASE_URL", "http://127.0.0.1:11434")).rstrip("/")

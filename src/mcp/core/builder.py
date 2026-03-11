@@ -1,6 +1,6 @@
 ﻿from __future__ import annotations
 
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 from typing import Dict, List, Optional, Tuple
 
 from mcp.core.decision import decide_action
@@ -169,7 +169,7 @@ def build_session_blocks(request: BuildRequestDTO, llm_client: LlmClient) -> Bui
         block.confidence = 0.5
         block.metadata = {
             "model": llm_client.model,
-            "timestamp": datetime.now(UTC).isoformat().replace("+00:00", "Z"),
+            "timestamp": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
             "analysis_version": ANALYSIS_VERSION,
         }
         llm_calls_summarize += 1
