@@ -12,18 +12,20 @@
   - 요청 DTO/응답 DTO 정의됨
   - 메시지 정렬 및 기본 검증 구현됨
   - 규칙 기반 `APPEND / NEW_BLOCK` 결정 로직 구현됨
-  - 애매 구간용 LLM 호출 인터페이스는 존재함
-  - 변경 블록에 대한 간단 요약 및 코드 스니펫 추출 구현됨
+  - 애매 구간용 Ollama 호출 구조 존재, 실패 시 fallback 동작
+  - `existingBlocks[].lastMessage`를 이용한 incremental 문맥 연결 구현됨
+  - 변경 블록 요약(tags) 및 코드 스니펫 추출 구현됨
+  - 기본 자동 테스트 추가됨
 
 - 아직 부족한 것
-  - 실제 LLM 연동 없음, 현재는 stub
-  - 요약 품질이 매우 단순한 키워드 규칙 수준
-  - 기존 블록 문맥을 활용한 incremental 처리 완성도 낮음
-  - 테스트 코드 없음
+  - Ollama 실환경 검증이 아직 충분하지 않음
+  - 요약 품질은 휴리스틱 수준이며 정교하지 않음
+  - API/운영 로그, 메트릭, 재시도 체계 없음
   - Real-time API 없음
-  - 로그/메트릭/재시도/structured output 검증 같은 운영 안정화 요소 없음
+  - structured output 검증과 fallback 고도화가 미흡함
+  - 성능 baseline 문서가 아직 없음
 
-즉, 문서상 표현대로 "실행 가능한 상태"는 맞지만, **실서비스 연결 전 단계의 프로토타입**으로 보는 것이 정확하다.
+즉, 현재 상태는 **Batch 기반 서버 MVP는 실행 가능한 수준까지 올라왔지만, 운영 안정화와 실환경 검증은 아직 남아 있는 단계**다.
 
 ## 2. 파일별 확인 결과
 
@@ -72,10 +74,10 @@
 - 현재 프로젝트에서 가장 많이 구현된 부분
 - 문서의 Batch 흐름을 실제 코드로 옮긴 핵심 모듈
 
-중요 한계:
-- `existingBlocks`의 마지막 메시지가 이번 요청의 `messages` 안에 없으면, 기존 블록의 마지막 문맥을 복원하지 못한다.
-- 그 경우 첫 신규 메시지는 사실상 `first_message`처럼 처리되어 새 블록이 시작될 가능성이 높다.
-- 따라서 현재 `INCREMENTAL` 모드는 "기존 블록을 이어서 정확히 붙이는 구현"이라고 보기 어렵다.
+현재 상태:
+- `existingBlocks[].lastMessage`가 들어오면 기존 블록의 마지막 문맥을 복원할 수 있다.
+- 따라서 incremental 요청에서 이전 블록에 자연스럽게 append될 가능성이 이전보다 높아졌다.
+- 다만 이 구조는 호출 측이 `lastMessage`를 정확히 넘겨준다는 전제가 필요하다.
 
 ### `src/mcp/core/decision.py`
 
@@ -98,9 +100,10 @@
   - `try`, `attempt` -> `TRIAL`
 
 판단:
-- MVP 데모용으로는 가능
-- 실제 `CONTEXT`, `INSIGHT` 품질은 거의 비어 있음
-- 문서에서 기대한 "블로그 초안 생성에 유용한 블록 품질"까지는 아직 도달하지 못함
+- 초기 데모 수준은 넘겼다.
+- `CONTEXT`, `PROBLEM`, `TRIAL`, `SOLUTION`, `INSIGHT`를 메시지 기반으로 뽑는다.
+- fenced code block 외에 명령어 라인도 스니펫으로 뽑는다.
+- 다만 여전히 휴리스틱 기반이라 고품질 요약으로 보기엔 부족하다.
 
 ### `src/mcp/llm/client.py`
 
@@ -109,8 +112,9 @@
 - 그러나 실제 모델 호출은 없고, context 길이의 짝/홀수로 결과를 결정하는 deterministic stub임
 
 판단:
-- LLM 연동은 미구현
-- 현재 코드에서 LLM 관련 부분은 구조만 잡혀 있고 기능은 가짜 응답이다
+- Ollama HTTP API를 호출하는 구조는 구현되어 있다.
+- 다만 서버 환경에서 실제 Ollama 연결 상태를 충분히 검증한 것은 아니다.
+- 호출 실패 시 deterministic fallback으로 내려가도록 되어 있다.
 
 ### `src/mcp/utils/validate.py`
 
@@ -134,18 +138,20 @@
 - 규칙 기반 결정 로직
 - 변경 블록 summarize 처리
 - 응답에 `stats` 포함
+- incremental 문맥 연결
+- 기본 테스트 추가
 
 ### 부분 완료 항목
 
 - `INCREMENTAL` 지원
-  - 형식상 존재
-  - 실제로는 기존 블록 마지막 문맥 활용이 부족해서 완성이라고 보기 어려움
+  - `lastMessage` 기반으로 보강됨
+  - 다만 호출 측 문맥 전달 정확도에 의존함
 - LLM 연동
-  - 호출 포인트는 존재
-  - 실제 모델 연동은 미완료
+  - Ollama 호출 구조는 구현됨
+  - 실환경 검증과 안정화는 미완료
 - summarize
-  - 함수는 존재
-  - 품질은 매우 기초 수준
+  - 함수와 테스트는 존재
+  - 품질은 휴리스틱 수준
 
 ### 미완료 항목
 
@@ -161,7 +167,7 @@
 
 ## 4. 현재 구현 수준을 한 문장으로 평가
 
-현재 코드는 **"Batch API 프로토타입이 돌아갈 수는 있지만, 결과 품질과 증분 처리 정확도는 아직 연구용 초기 단계"**라고 정리하는 것이 맞다.
+현재 코드는 **"Batch MCP MVP가 실행 가능한 수준이며, 이제 우분투 서버 실환경 검증과 운영 안정화 단계로 넘어가는 상태"**라고 정리하는 것이 맞다.
 
 ## 5. 지금 바로 다음 우선순위
 
@@ -183,6 +189,11 @@
 - `src/mcp/core/summarize.py`
 - `src/mcp/llm/client.py`
 - `src/mcp/utils/validate.py`
+
+## 8. 우분투 운영 문서
+
+- `README.md`
+- `ubuntu_server_guide.md`
 
 ## 7. 수정 이력
 
@@ -224,3 +235,95 @@
   - summarize 품질 개선
   - 테스트 코드 추가
   - 성능/품질 baseline 측정
+
+### 2026-03-11 추가 수정 2
+
+- `src/mcp/core/summarize.py`
+  - 요약 로직을 단순 고정 문구 방식에서 메시지 기반 휴리스틱 방식으로 교체했다.
+  - `CONTEXT`는 첫 번째 유효 메시지 문장을 사용한다.
+  - `PROBLEM`, `TRIAL`, `SOLUTION`, `INSIGHT`는 메시지별 키워드 탐지 결과를 실제 문장과 함께 태그로 남긴다.
+  - fenced code block 외에도 `$ ...`, `python`, `uvicorn`, `git`, `docker`, `npm` 같은 명령어 라인을 `bash` 스니펫으로 추출한다.
+
+- `tests/test_builder.py`
+  - summarize 결과 검증 테스트 추가
+  - 코드 스니펫 추출 테스트 추가
+  - incremental append 동작 테스트 추가
+  - API의 잘못된 `analysisMode` 검증 테스트 추가
+  - 현재 로컬 환경에 `fastapi`가 없을 때는 API 테스트를 skip 하도록 처리했다.
+
+- `src/mcp/core/builder.py`
+  - metadata timestamp 생성을 `datetime.now(UTC)` 기반으로 바꿔 Python 3.13 deprecation warning을 제거했다.
+
+- 검증
+  - `python -m compileall src tests` 통과
+  - `$env:PYTHONPATH='src'; python -m unittest discover -s tests -v` 통과
+  - 테스트 결과:
+    - `4`개 실행
+    - `3`개 통과
+    - `1`개 skip (`fastapi` 미설치 환경)
+
+### 2026-03-11 추가 수정 3
+
+- `README.md`
+  - 루트 문서를 우분투 서버 기준 진입 문서로 정리했다.
+  - 현재 구현 범위, 핵심 문서 링크, 빠른 실행 명령, 테스트 명령을 넣었다.
+
+- `ubuntu_server_guide.md`
+  - 우분투 서버 설치/실행/테스트 절차를 문서화했다.
+  - 포함 내용:
+    - 서버 사전 준비
+    - 가상환경 생성
+    - 의존성 설치
+    - `uvicorn` 실행
+    - `curl` 기반 Batch/Incremental 요청 예제
+    - `unittest` 실행
+    - Ollama 환경변수 및 확인 절차
+    - `systemd` 서비스 예시
+    - 배포 직후 최소 점검 절차
+
+- 방향 정리
+  - 앞으로는 윈도우 테스트 기준을 버리고 우분투 서버 기준으로만 진행한다.
+
+### 2026-03-11 추가 수정 4
+
+- `deploy/mcp.service`
+  - 우분투 `systemd` 서비스 파일을 실제 파일로 추가했다.
+  - 기본 경로는 `/opt/mcp`, 서비스명은 `mcp` 기준이다.
+  - `.env`를 `EnvironmentFile`로 읽도록 설정했다.
+
+- `deploy/setup_ubuntu.sh`
+  - 우분투 서버에서 바로 실행 가능한 초기 배포 스크립트를 추가했다.
+  - 수행 내용:
+    - apt 패키지 설치
+    - 가상환경 생성
+    - 의존성 설치
+    - `.env.example` -> `.env` 복사
+    - `systemd` 서비스 등록
+    - 서비스 시작
+
+- `.env.example`
+  - Ollama 관련 기본 환경변수 예시 파일을 추가했다.
+
+- 문서 반영
+  - `README.md`에 배포 파일 링크 추가
+  - `ubuntu_server_guide.md`에 배포 파일 소개와 `setup_ubuntu.sh` 실행 예시 추가
+
+### 2026-03-11 추가 수정 5
+
+- `examples/full_build_request.json`
+  - 서버에 올린 뒤 바로 `FULL` 요청 테스트를 할 수 있는 예제 payload를 추가했다.
+
+- `examples/incremental_build_request.json`
+  - `existingBlocks[].lastMessage`까지 포함한 incremental 요청 예제 payload를 추가했다.
+
+- `deploy/check_ubuntu.sh`
+  - 우분투 서버에서 배포 직후 한 번에 점검할 수 있는 스크립트를 추가했다.
+  - 수행 내용:
+    - `unittest` 실행
+    - FULL 요청 전송
+    - INCREMENTAL 요청 전송
+    - Ollama 도달 가능 여부 확인
+
+- 문서 반영
+  - `README.md`에 점검 스크립트와 예제 payload 링크 추가
+  - `ubuntu_server_guide.md`에 `check_ubuntu.sh` 사용 예시 추가
