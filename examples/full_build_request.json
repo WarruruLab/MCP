@@ -1,0 +1,18 @@
+{
+  "sessionId": "sess_demo",
+  "analysisMode": "FULL",
+  "messages": [
+    {
+      "messageId": "msg_1",
+      "role": "user",
+      "content": "Redis connection error happened",
+      "timestamp": "2026-03-11T10:00:00Z"
+    },
+    {
+      "messageId": "msg_2",
+      "role": "assistant",
+      "content": "Try changing the redis host and test again",
+      "timestamp": "2026-03-11T10:01:00Z"
+    }
+  ]
+}

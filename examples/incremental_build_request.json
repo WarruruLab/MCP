@@ -1,0 +1,30 @@
+{
+  "sessionId": "sess_demo",
+  "analysisMode": "INCREMENTAL",
+  "messages": [
+    {
+      "messageId": "msg_3",
+      "role": "user",
+      "content": "same redis error continues",
+      "timestamp": "2026-03-11T10:02:00Z"
+    }
+  ],
+  "existingBlocks": [
+    {
+      "blockId": "blk_existing",
+      "messageIds": [
+        "msg_1",
+        "msg_2"
+      ],
+      "tags": {
+        "PROBLEM": "Redis connection error happened"
+      },
+      "lastMessage": {
+        "messageId": "msg_2",
+        "role": "assistant",
+        "content": "same redis error",
+        "timestamp": "2026-03-11T10:01:00Z"
+      }
+    }
+  ]
+}
