@@ -43,7 +43,7 @@ DevLog ──── REST ────▶ MCP Server
             메시지 전달 → session_block 반환
 ```
 
-연관 레포: [개발톡(DevTalk)](#) · [개발로그(DevLog)](#)
+연관 레포: [개발톡(DevTalk)](https://github.com/WarruruLab/DevTalk) · [개발로그(DevLog)](https://github.com/WarruruLab/DevLog)
 
 ---
 
