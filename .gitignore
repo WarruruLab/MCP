@@ -18,6 +18,7 @@ context_internal.md
 # Local logs and reports
 *.log
 logs/
+DEV_PROGRESS.md
 
 # Test and tooling caches
 .pytest_cache/

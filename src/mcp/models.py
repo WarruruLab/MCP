@@ -1,6 +1,6 @@
 ﻿from __future__ import annotations
 
-from datetime import datetime
+from enum import Enum
 from typing import Dict, List, Optional
 
 from pydantic import BaseModel, Field
@@ -25,6 +25,80 @@ class ExistingBlockDTO(BaseModel):
     messageIds: List[str]
     tags: Optional[Dict[str, object]] = None
     lastMessage: Optional[ExistingBlockLastMessageDTO] = None
+
+
+class BlockAction(str, Enum):
+    APPEND = "APPEND"
+    NEW_BLOCK = "NEW_BLOCK"
+
+
+class NarrativeBlockType(str, Enum):
+    PROBLEM = "problem"
+    PROPOSAL = "proposal"
+    TRIAL = "trial"
+    RESULT = "result"
+    INSIGHT = "insight"
+
+
+class NarrativeBlockStatus(str, Enum):
+    OPEN = "open"
+    NEUTRAL = "neutral"
+    FAILED = "failed"
+    SUCCESS = "success"
+
+
+class NarrativeBlockBaseDTO(BaseModel):
+    topic: str = ""
+    blockType: NarrativeBlockType
+    status: NarrativeBlockStatus = NarrativeBlockStatus.NEUTRAL
+    summary: str = ""
+    tags: Dict[str, object] = Field(default_factory=dict)
+    parentBlockId: Optional[str] = None
+    relatedBlockIds: List[str] = Field(default_factory=list)
+
+
+class NarrativeBlockDTO(NarrativeBlockBaseDTO):
+    blockId: str
+    messageIds: List[str] = Field(default_factory=list)
+
+
+class CandidateBlockContextDTO(NarrativeBlockBaseDTO):
+    blockId: str
+    recentMessageIds: List[str] = Field(default_factory=list)
+
+
+class IngestMessageOptionsDTO(BaseModel):
+    maxRecentMessages: int = 8
+    maxCandidateBlocks: int = 8
+
+
+class BlockRoutingDecisionDTO(BaseModel):
+    action: BlockAction
+    targetBlockId: Optional[str] = None
+    blockType: NarrativeBlockType
+    status: NarrativeBlockStatus = NarrativeBlockStatus.NEUTRAL
+    topic: str = ""
+    summary: str = ""
+    tags: Dict[str, object] = Field(default_factory=dict)
+    score: float = 0.0
+    reason: str = ""
+
+
+class IngestMessageRequestDTO(BaseModel):
+    sessionId: str
+    currentMessage: MessageDTO
+    candidateBlocks: List[CandidateBlockContextDTO] = Field(default_factory=list)
+    recentMessages: List[MessageDTO] = Field(default_factory=list)
+    options: IngestMessageOptionsDTO = Field(default_factory=IngestMessageOptionsDTO)
+
+
+class IngestMessageResponseDTO(BaseModel):
+    sessionId: str
+    action: BlockAction
+    targetBlockId: Optional[str] = None
+    block: NarrativeBlockDTO
+    score: float = 0.0
+    reason: str = ""
 
 
 class BuildOptionsDTO(BaseModel):
