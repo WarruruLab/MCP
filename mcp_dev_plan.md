@@ -136,6 +136,20 @@ status 예시:
 3. replay 처리
 4. logging / metrics / trace id
 
+### Phase 5. 예외 복구
+
+1. 메시지 처리 상태 정의
+   - `received`
+   - `processing`
+   - `processed`
+   - `failed`
+   - `reconcile_pending`
+2. LLM timeout / invalid output / DB 반영 실패 시 상태 기록
+3. 짧은 retry 정책 추가
+4. reconciliation batch 구현
+5. 세션 전체 메시지와 block 포함 메시지 차집합 계산
+6. 누락된 `messageId`만 다시 routing
+
 ## 7. 더 이상 기본으로 두지 않는 가정
 
 - block 하나에 문제부터 해결까지 모두 담는 방식
@@ -152,3 +166,10 @@ status 예시:
 - local LLM classifier prompt
 - active block state update 로직
 - block 선택용 DevLog 계약 문서
+
+운영 안정화 산출물:
+
+- 메시지 처리 상태 모델
+- retry 정책
+- reconciliation job
+- 누락 메시지 복구 로직

@@ -136,6 +136,13 @@ P2
 - replay / recovery
 - metrics / trace
 
+P3
+
+- 메시지 처리 상태 모델
+- retry 정책
+- reconciliation batch
+- 누락 `messageId` 복구
+
 ## 7. block 설계 메모
 
 권장 최소 필드:
@@ -172,3 +179,17 @@ P2
 5. 테스트 작성
 
 이 문서를 기준으로 바로 sub-agent를 투입해 병렬 개발을 시작할 수 있다.
+
+## 9. 예외 처리 메모
+
+운영 단계에서는 정상 경로만으로 충분하지 않다.
+
+예외 방향:
+
+1. 메시지는 먼저 저장
+2. MCP 반영 실패 시 메시지를 버리지 않음
+3. 해당 메시지는 `failed` 또는 `reconcile_pending` 상태로 남김
+4. reconciliation에서 세션 전체 메시지와 block에 포함된 메시지를 비교
+5. 누락된 `messageId`만 다시 routing
+
+즉 복구 기준은 "세션 전체 재분석"이 아니라 "block에 아직 포함되지 않은 메시지만 재처리"다.

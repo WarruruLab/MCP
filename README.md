@@ -82,9 +82,10 @@ DevLog ──── REST ────▶ MCP Server
 | block type / status 설계 | ✅ 완료 | `problem / proposal / trial / result / insight` 기준 |
 | MySQL 테이블 전환안 | ✅ 완료 | narrative block 기준 SQL 파일 작성 |
 | README / plan / 개발 문서 정리 | ✅ 완료 | narrative 구조 기준으로 정리 |
-| `ingest-message` API | ❌ 미완료 | 다음 단계 구현 대상 |
-| local LLM block classifier | ❌ 미완료 | 다음 단계 구현 대상 |
-| active block 상태 반영 로직 | ❌ 미완료 | 다음 단계 구현 대상 |
+| `ingest-message` API | ✅ 완료 | candidate block 기반 실시간 입력 경로 추가 |
+| local LLM block classifier | ✅ 완료 | 기존 block 선택 또는 새 block 생성 판단 가능 |
+| active block 상태 반영 로직 | ✅ 완료 | LLM 결정값을 block state에 반영 가능 |
+| 예외 복구 / reconciliation | ❌ 미완료 | 실패 메시지 재처리와 누락 메시지 복구는 다음 단계 |
 
 <br/>
 
@@ -182,6 +183,21 @@ DevLog가 block을 선택해 글 흐름 구성
 
 LLM은 새 메시지를 독립적으로만 보지 않고, 이미 생성된 block 후보들과 비교해 판단합니다. 즉 기준은 "직전 메시지와 비슷한가"보다 "현재 존재하는 어떤 narrative block에 속하는가"입니다. 어울리는 block이 없을 때만 새 block을 만듭니다.
 
+### 예외 처리 방향
+
+실시간 분류는 빠른 반영 경로이고, 실패 복구는 별도 경로로 분리할 예정이다.
+
+예상 흐름:
+
+1. 새 메시지를 저장한다.
+2. MCP가 block 반영을 시도한다.
+3. 성공하면 해당 메시지를 `processed`로 본다.
+4. 실패하면 `failed` 또는 `reconcile_pending` 상태로 남긴다.
+5. 이후 reconciliation job이 세션 전체 메시지와 현재 block에 포함된 `messageIds`를 비교한다.
+6. block에 아직 포함되지 않은 `messageId`만 다시 routing 한다.
+
+즉 업로드 실패, LLM timeout, DB 반영 실패 같은 경우에도 메시지를 버리지 않고, 나중에 **누락 메시지만 다시 block에 넣는 방식**으로 복구할 계획이다.
+
 <br/>
 
 ## 장점과 한계
@@ -196,8 +212,9 @@ LLM은 새 메시지를 독립적으로만 보지 않고, 이미 생성된 block
 
 **한계**
 
-- narrative block 구조는 아직 코드에 반영되지 않았다
-- local LLM 분류기와 `ingest-message` API가 아직 구현되지 않았다
+- 예외 복구 상태 모델은 아직 구현되지 않았다
+- retry / reconciliation batch가 아직 구현되지 않았다
+- DB persistence와 멱등 처리까지는 아직 연결되지 않았다
 - block 간 관계를 어떻게 유지할지 세부 정책이 더 필요하다
 
 <br/>

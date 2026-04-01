@@ -80,17 +80,30 @@ local LLM은 생성기가 아니라 분류기다.
 ## 7. 현재 구현되어 있는 것
 
 - FastAPI 진입점
-- batch build endpoint
-- 메시지 검증 및 정렬
-- 규칙 기반 경계 판정
-- Ollama 보조 판정
-- code snippet 추출
+- `ingest-message` endpoint
+- narrative block DTO
+- candidate block 기반 local LLM 분류
+- block append / new block 반영 로직
+- realtime 계약 테스트
 - 기본 테스트
 
-## 8. 지금 필요한 다음 단계
+## 8. 예외 처리 방향
 
-1. block 타입 중심 DTO 재설계
-2. `ingest-message` 입력/출력 계약 정의
-3. local LLM 분류 프롬프트 설계
-4. block 상태 저장 구조 재설계
+정상 경로 외의 실패는 버리지 않고 복구 가능한 상태로 남기는 방향으로 간다.
+
+핵심 정책:
+
+- 메시지 저장과 block 반영을 논리적으로 분리
+- 반영 실패 메시지는 `failed` 또는 `reconcile_pending` 상태로 유지
+- 나중에 batch reconciliation으로 세션 전체 메시지와 `block_messages`를 비교
+- block에 포함되지 않은 `messageId`만 다시 routing
+
+즉 운영 기준 복구 방식은 "전체 재분석"보다 **누락 메시지만 다시 block에 넣는 방식**이다.
+
+## 9. 지금 필요한 다음 단계
+
+1. 메시지 처리 상태 모델 추가
+2. DB persistence와 멱등 처리 연결
+3. retry 정책 추가
+4. reconciliation batch 구현
 5. 기존 5-tag summarize 의존 제거
