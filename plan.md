@@ -9,7 +9,8 @@
 한 메시지가 들어오면 MCP가 아래를 할 수 있어야 한다.
 
 - 어떤 주제의 흐름인지 판단
-- 기존 block에 붙일지 새 block을 만들지 판단
+- 이미 생성된 block 후보 중 어디에 붙일지 판단
+- 어울리는 block이 없으면 새 block을 만들지 판단
 - 그 block이 문제, 제안, 시도, 결과, 인사이트 중 무엇인지 정리
 - 사용자가 나중에 block을 골라 DevLog 글 흐름을 구성할 수 있게 상태를 저장
 
@@ -41,7 +42,9 @@
 
 ### Track C. 상태 반영 로직
 
+- candidate block 조회
 - active block 조회
+- target block 선택 결과 반영
 - append 처리
 - new block 처리
 - tag merge / summary update

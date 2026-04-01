@@ -53,10 +53,10 @@ status 예시:
 ## 3. 실시간 처리 흐름
 
 1. DevTalk에서 새 메시지 발생
-2. MCP가 최근 메시지와 active block 목록 조회
+2. MCP가 최근 메시지와 active block 목록을 조회
 3. local LLM에 분류 요청
 4. LLM이 아래 중 하나를 반환
-   - 기존 block append
+   - 기존 block 후보 중 하나 선택 후 append
    - 새 block 생성
 5. MCP가 block 상태 저장
 6. DevLog가 최신 block 흐름 조회
@@ -67,6 +67,8 @@ status 예시:
 - `currentMessage`
 - `recentMessages`
 - `activeBlocks`
+
+`activeBlocks`는 "append 가능한 block 후보 집합"이다. LLM은 이 후보들 중 가장 어울리는 block을 선택하거나, 적합한 후보가 없다고 판단하면 새 block 생성을 반환해야 한다.
 
 `activeBlocks`에는 각 block의 아래 정보가 포함되어야 한다.
 

@@ -62,8 +62,9 @@ block 타입에 따라 일부만 사용한다.
 
 local LLM은 생성기가 아니라 분류기다.
 
-- 새 메시지가 어떤 block에 속하는지 판단
-- 기존 block에 append할지 새 block을 만들지 판단
+- 새 메시지가 이미 존재하는 block 후보들 중 어디에 속하는지 판단
+- 적합한 기존 block이 있으면 append 대상으로 선택
+- 적합한 block이 없으면 새 block을 만들도록 판단
 - block의 `blockType`, `status`, `summary`, `tags` 후보를 반환
 
 ## 6. 서버의 역할

@@ -9,6 +9,7 @@
 즉 서버는 아래 역할을 지원해야 한다.
 
 - 새 메시지 실시간 분류
+- 기존 block 후보 조회 및 적합 block 선택
 - narrative block 상태 유지
 - DevLog가 선택 가능한 block 목록 제공
 
