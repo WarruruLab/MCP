@@ -1,129 +1,152 @@
-﻿# MCP 개발 세부 계획 (Batch 전용, 실행 가능한 수준)
+# MCP 실시간 전환 개발 계획
 
-## 0. 범위
-1. 대상은 Batch API `/v1/session-blocks:build`만 포함한다.
-2. Real-time/ingest 관련 기능은 포함하지 않는다.
+기준일: 2026-04-01
 
-## 1. 입력/출력 스펙 고정
-1. Request 필수 필드 (고정)
-   - `sessionId` (string)
-   - `analysisMode` (string: `INCREMENTAL` | `FULL`)
-   - `messages[]` (array)
-   - `existingBlocks[]` (array)
-   - `options` (object)
-2. Message 필수 필드 (고정)
-   - `messageId` (string)
-   - `role` (string: `user` | `assistant` | `system`)
-   - `content` (string)
-   - `timestamp` (string, ISO-8601)
-3. existingBlocks 최소 필드
-   - `blockId` (string)
-   - `messageIds[]` (string[])
-   - `tags` (object, optional)
-4. options 기본값
-   - `timeGapMinutes`: 10
-   - `shiftLowSim`: 0.20
-   - `shiftHighSim`: 0.45
-   - `maxLastMessagesForContext`: 6
-5. 정렬 규칙 (고정)
-   - `timestamp` asc, tie-breaker `messageId` asc
-6. Response 필수 필드 (고정)
-   - `sessionId` (string)
-   - `analysis_version` (string)
-   - `model` (string)
-   - `blocks[]` (session_block[])
-   - `messageToBlock` (map)
-   - `stats` (object)
+## 0. 목표
 
-## 2. 스키마/검증 정책
-1. 입력 검증
-   - 필수 필드 누락 시 4xx
-   - `role` 허용값 검증
-   - `timestamp` 파싱 실패 시 4xx
-   - `messages[]` 비어있으면 400
-2. 출력 검증
-   - JSON Schema 또는 Pydantic으로 응답 검증
-   - 검증 실패 시 500
-3. 결정론 보장
-   - LLM temperature 0, fixed seed
-   - 동일 입력 -> 동일 출력
+이 프로젝트를 "batch summary server"에서 "real-time narrative block classifier"로 전환한다.
 
-## 3. 구현 파일 구조 (MCP 서버)
-1. `src/api/handlers.py`
-   - `/v1/session-blocks:build` 라우팅
-2. `src/models/dto.py`
-   - Request/Response/Block 스키마 정의
-3. `src/core/builder.py`
-   - `build_session_blocks()` 구현
-4. `src/core/decision.py`
-   - APPEND/NEW_BLOCK 규칙 + LLM 호출
-5. `src/core/summarize.py`
-   - summarize_block 로직
-6. `src/llm/client.py`
-   - LLM client + structured output
-7. `src/utils/validate.py`
-   - 입력/출력 검증 유틸
+핵심 요구:
 
-## 4. 핵심 처리 단계 (build_session_blocks)
-1. 입력 검증
-2. 메시지 정규화
-   - 공백 trim, null 제거, 타입 강제
-3. 메시지 정렬
-4. 기존 블록 로딩
-   - `existingBlocks`에서 blockId -> block 객체 매핑
-5. 메시지 순회
-   - 각 메시지마다 APPEND/NEW_BLOCK 판정
-   - messageToBlock 갱신
-6. 변경된 블록만 summarize
-7. 응답 조립
-   - blocks, messageToBlock, stats 포함
+- 새 메시지 1개를 실시간으로 분류할 수 있어야 한다.
+- block은 조립 가능한 서사 단위여야 한다.
+- block은 문제, 제안, 시도, 실패, 성공 같은 단계를 분리해야 한다.
+- 사용자는 block을 선택해 원하는 흐름만 DevLog 글에 반영할 수 있어야 한다.
 
-## 5. APPEND/NEW_BLOCK 결정 규칙 (구체)
-1. 시간 간격
-   - 마지막 메시지와의 gap > `timeGapMinutes` => NEW_BLOCK
-2. 유사도
-   - 유사도 <= `shiftLowSim` => NEW_BLOCK
-   - 유사도 >= `shiftHighSim` => APPEND
-3. 경계 구간
-   - LLM structured output로 결정
-4. LLM 결과 스키마
-   - `{action: APPEND|NEW_BLOCK, score: 0.0~1.0, reason: string}`
+## 1. block 모델 원칙
 
-## 6. 블록 ID 생성 규칙
-1. 신규 블록 ID: `blk_{sessionId}_{seq}`
-2. `seq`는 이번 build 내에서만 증가
-3. 기존 blockId와 충돌 시 +1 재시도
+block 하나는 한 단계만 표현한다.
 
-## 7. summarize_block 규칙
-1. 변경된 블록만 실행
-2. 출력 tags
-   - `CONTEXT`, `PROBLEM`, `TRIAL[]`, `SOLUTION`, `INSIGHT`
-3. code_snippets 추출
-   - 코드/설정/명령어 패턴 기반
-4. confidence 계산
-   - LLM score 또는 규칙 기반 점수
+가능한 block type 예시:
 
-## 8. LLM 연동 상세
-1. Structured output 프롬프트 고정
-2. 1회 재시도 후 실패 시 규칙 기반 fallback
-3. LLM 응답 검증 실패 로그 기록
+- `problem`
+- `proposal`
+- `trial`
+- `result`
+- `insight`
 
-## 9. 통계/로그
-1. `stats`
-   - `numMessages`, `numBlocks`, `llmCalls_shift`, `llmCalls_summarize`
-2. 로그
-   - request id, 처리시간, 에러코드, LLM 호출 수
+status 예시:
 
-## 10. 테스트/검증
-1. 샘플 10개 입력에서 스키마 100% 통과
-2. 동일 입력 3회 반복 결과 동일성 확인
-3. 1000+ 메시지 입력에서 timeout 없이 완료
+- `neutral`
+- `open`
+- `failed`
+- `success`
 
-## 11. 개발 순서 (실행 절차)
-1. DTO/스키마 정의
-2. 입력 검증 로직 구현
-3. build_session_blocks 코어 로직 구현
-4. 결정 규칙 + LLM 연동
-5. summarize_block 구현
-6. 응답/통계/로그 완성
-7. 테스트 데이터로 검증
+## 2. 권장 block 스키마
+
+```json
+{
+  "blockId": "blk_123",
+  "topic": "Redis timeout issue",
+  "blockType": "result",
+  "status": "failed",
+  "summary": "Retry with increased timeout failed again.",
+  "messageIds": ["msg_21", "msg_22"],
+  "tags": {
+    "method": "increase timeout",
+    "result": "failed",
+    "reason": "upstream dependency still blocked"
+  }
+}
+```
+
+## 3. 실시간 처리 흐름
+
+1. DevTalk에서 새 메시지 발생
+2. MCP가 최근 메시지와 active block 목록 조회
+3. local LLM에 분류 요청
+4. LLM이 아래 중 하나를 반환
+   - 기존 block append
+   - 새 block 생성
+5. MCP가 block 상태 저장
+6. DevLog가 최신 block 흐름 조회
+
+## 4. LLM 입력 컨텍스트
+
+- `sessionId`
+- `currentMessage`
+- `recentMessages`
+- `activeBlocks`
+
+`activeBlocks`에는 각 block의 아래 정보가 포함되어야 한다.
+
+- `blockId`
+- `topic`
+- `blockType`
+- `status`
+- `summary`
+- `recentMessageIds`
+- `tags`
+
+## 5. LLM 출력 계약
+
+```json
+{
+  "action": "APPEND",
+  "targetBlockId": "blk_123",
+  "blockType": "trial",
+  "status": "neutral",
+  "topic": "Redis timeout issue",
+  "summary": "Tried increasing timeout and reran the request.",
+  "tags": {
+    "method": "increase timeout"
+  },
+  "score": 0.88,
+  "reason": "same_attempt_continues"
+}
+```
+
+필수 조건:
+
+- JSON only
+- `action`: `APPEND | NEW_BLOCK`
+- `blockType`는 허용된 enum만 사용
+- `status`는 허용된 enum만 사용
+- `summary`는 block 한 줄 설명이어야 함
+- `tags`는 block 타입에 맞는 일부 필드만 채움
+
+## 6. 구현 단계
+
+### Phase 1. 모델 정리
+
+1. 기존 5-tag 기본 모델 제거 방향 확정
+2. narrative block DTO 설계
+3. active block 조회/저장 구조 설계
+
+### Phase 2. 분류 경로 구현
+
+1. `ingest-message` DTO 작성
+2. local LLM prompt 작성
+3. structured output parser 작성
+4. invalid output fallback 작성
+
+### Phase 3. block 상태 반영
+
+1. 기존 block append
+2. 새 block 생성
+3. tag merge 정책 작성
+4. summary 갱신 정책 작성
+
+### Phase 4. 운영 안전성
+
+1. 세션 직렬 처리
+2. 멱등 처리
+3. replay 처리
+4. logging / metrics / trace id
+
+## 7. 더 이상 기본으로 두지 않는 가정
+
+- block 하나에 문제부터 해결까지 모두 담는 방식
+- 모든 block에 동일한 tag 세트를 채우는 방식
+- batch가 중심이고 real-time이 보조라는 가정
+- 규칙 기반 판정이 주가 되는 구조
+
+## 8. 개발 산출물
+
+개발 완료 시 최소 산출물:
+
+- `POST /v1/session-blocks:ingest-message`
+- narrative block DTO
+- local LLM classifier prompt
+- active block state update 로직
+- block 선택용 DevLog 계약 문서
