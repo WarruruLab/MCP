@@ -101,6 +101,126 @@ class IngestMessageResponseDTO(BaseModel):
     reason: str = ""
 
 
+class MessageProcessingStatus(str, Enum):
+    RECEIVED = "received"
+    PROCESSING = "processing"
+    PROCESSED = "processed"
+    FAILED = "failed"
+    RECONCILE_PENDING = "reconcile_pending"
+
+
+class ReconciliationRunType(str, Enum):
+    SCHEDULED = "scheduled"
+    MANUAL = "manual"
+    STARTUP = "startup"
+    RETRY = "retry"
+
+
+class ReconciliationRunStatus(str, Enum):
+    PENDING = "pending"
+    RUNNING = "running"
+    SUCCEEDED = "succeeded"
+    FAILED = "failed"
+
+
+class ReconciliationItemStatus(str, Enum):
+    MISSING = "missing"
+    RECOVERED = "recovered"
+    FAILED = "failed"
+    SKIPPED = "skipped"
+
+
+class MessageProcessingRecordDTO(BaseModel):
+    sessionId: str
+    messageId: str
+    status: MessageProcessingStatus = MessageProcessingStatus.RECEIVED
+    attemptCount: int = 0
+    blockAction: Optional[BlockAction] = None
+    blockId: Optional[str] = None
+    blockType: Optional[NarrativeBlockType] = None
+    blockStatus: Optional[NarrativeBlockStatus] = None
+    routingScore: Optional[float] = None
+    lastErrorStage: Optional[str] = None
+    lastErrorCode: Optional[str] = None
+    lastErrorMessage: Optional[str] = None
+    lastDecisionPayload: Dict[str, object] = Field(default_factory=dict)
+    lastPayload: Dict[str, object] = Field(default_factory=dict)
+    reconciliationRunId: Optional[int] = None
+    receivedAt: Optional[str] = None
+    processingAt: Optional[str] = None
+    processedAt: Optional[str] = None
+    failedAt: Optional[str] = None
+    reconciledAt: Optional[str] = None
+    retryAfter: Optional[str] = None
+
+
+class MessageProcessingUpdateDTO(BaseModel):
+    sessionId: str
+    messageId: str
+    status: MessageProcessingStatus
+    attemptCount: Optional[int] = None
+    blockAction: Optional[BlockAction] = None
+    blockId: Optional[str] = None
+    blockType: Optional[NarrativeBlockType] = None
+    blockStatus: Optional[NarrativeBlockStatus] = None
+    routingScore: Optional[float] = None
+    lastErrorStage: Optional[str] = None
+    lastErrorCode: Optional[str] = None
+    lastErrorMessage: Optional[str] = None
+    lastDecisionPayload: Dict[str, object] = Field(default_factory=dict)
+    retryAfter: Optional[str] = None
+
+
+class MessageReconciliationRunDTO(BaseModel):
+    reconciliationRunId: Optional[int] = None
+    sessionId: str
+    runType: ReconciliationRunType = ReconciliationRunType.SCHEDULED
+    status: ReconciliationRunStatus = ReconciliationRunStatus.PENDING
+    expectedMessageCount: int = 0
+    processedMessageCount: int = 0
+    missingMessageCount: int = 0
+    recoveredMessageCount: int = 0
+    notes: str = ""
+    summaryPayload: Dict[str, object] = Field(default_factory=dict)
+    startedAt: Optional[str] = None
+    finishedAt: Optional[str] = None
+
+
+class MessageReconciliationItemDTO(BaseModel):
+    reconciliationRunId: Optional[int] = None
+    sessionId: str
+    messageId: str
+    status: ReconciliationItemStatus = ReconciliationItemStatus.MISSING
+    reason: str = ""
+    blockId: Optional[str] = None
+    attemptCount: int = 0
+    createdAt: Optional[str] = None
+    updatedAt: Optional[str] = None
+
+
+class MessageReconciliationSummaryDTO(BaseModel):
+    sessionId: str
+    reconciliationRunId: Optional[int] = None
+    expectedMessageIds: List[str] = Field(default_factory=list)
+    processedMessageIds: List[str] = Field(default_factory=list)
+    missingMessageIds: List[str] = Field(default_factory=list)
+    recoveredMessageIds: List[str] = Field(default_factory=list)
+    failedMessageIds: List[str] = Field(default_factory=list)
+    status: ReconciliationRunStatus = ReconciliationRunStatus.PENDING
+    notes: str = ""
+
+
+class SessionIngestCursorDTO(BaseModel):
+    sessionId: str
+    lastReceivedMessageId: Optional[str] = None
+    lastProcessingMessageId: Optional[str] = None
+    lastProcessedMessageId: Optional[str] = None
+    lastReconciledMessageId: Optional[str] = None
+    pendingMessageCount: int = 0
+    failedMessageCount: int = 0
+    updatedAt: Optional[str] = None
+
+
 class BuildOptionsDTO(BaseModel):
     timeGapMinutes: int = 10
     shiftLowSim: float = 0.20

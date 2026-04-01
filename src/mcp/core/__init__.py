@@ -11,3 +11,18 @@ from .routing import (
     rank_candidate_blocks,
     route_message,
 )
+from .reconciliation import (
+    MessageProcessingRecord,
+    MessageProcessingState,
+    ReconciliationRoutingResult,
+    SessionMessageReconciliation,
+    mark_failed,
+    mark_processing,
+    mark_processed,
+    mark_reconcile_pending,
+    mark_received,
+    reconcile_session_messages,
+    reroute_missing_messages,
+    should_reconcile,
+    transition_message_processing,
+)
