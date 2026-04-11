@@ -1,7 +1,7 @@
 ﻿from __future__ import annotations
 
 from enum import Enum
-from typing import Dict, List, Optional
+from typing import Any, Dict, List, Optional
 
 from pydantic import BaseModel, Field
 
@@ -99,6 +99,91 @@ class IngestMessageResponseDTO(BaseModel):
     block: NarrativeBlockDTO
     score: float = 0.0
     reason: str = ""
+    devlog: Optional["DevLogSyncResultDTO"] = None
+
+
+class DevLogActiveBlockDTO(BaseModel):
+    sessionId: str
+    blockId: int
+    mcpBlockId: str
+    blockType: str
+    title: str = ""
+    summary: str = ""
+    lastMessageId: Optional[str] = None
+    status: str = "ACTIVE"
+
+
+class DevLogBlockTargetDTO(BaseModel):
+    mcpBlockId: str
+    blockType: str
+    title: str = ""
+    summary: str = ""
+    status: str = "ACTIVE"
+
+
+class DevLogBlockContentDTO(BaseModel):
+    tags: List[str] = Field(default_factory=list)
+    codeSnippets: List[Dict[str, Any]] = Field(default_factory=list)
+
+
+class DevLogBlockEventRequestDTO(BaseModel):
+    sessionId: str
+    eventId: str
+    messageId: str
+    analysisVersion: str
+    model: str
+    operation: str
+    targetBlock: DevLogBlockTargetDTO
+    content: DevLogBlockContentDTO = Field(default_factory=DevLogBlockContentDTO)
+
+
+class DevLogBlockEventResponseDTO(BaseModel):
+    sessionId: str
+    eventId: str
+    status: str = "OK"
+    targetBlockId: Optional[str] = None
+    blockId: Optional[int] = None
+
+
+class DevLogEventDispatchDTO(BaseModel):
+    operation: str
+    eventId: str
+    status: str = "PENDING"
+    targetBlockId: Optional[str] = None
+    blockId: Optional[int] = None
+
+
+class DevLogSyncResultDTO(BaseModel):
+    activeBlock: Optional[DevLogActiveBlockDTO] = None
+    dispatchedEvents: List[DevLogEventDispatchDTO] = Field(default_factory=list)
+
+
+class DevLogSessionBlockDTO(BaseModel):
+    mcpBlockId: str
+    sequenceNo: Optional[int] = None
+    blockType: str
+    title: str = ""
+    summary: str = ""
+    messageIds: List[str] = Field(default_factory=list)
+    confidence: float = 0.0
+    content: Dict[str, Any] = Field(default_factory=dict)
+
+
+class DevLogSessionBlocksIngestRequestDTO(BaseModel):
+    sessionId: str
+    analysisVersion: str
+    model: str
+    mode: str
+    blocks: List[DevLogSessionBlockDTO] = Field(default_factory=list)
+
+
+class DevLogSessionBlocksIngestResponseDTO(BaseModel):
+    sessionId: str
+    savedBlockCount: int
+    structuredMessageCount: int
+    unstructuredMessageCount: int
+    blockIdMap: Dict[str, int] = Field(default_factory=dict)
+    status: str = "DONE"
 
 
 class MessageProcessingStatus(str, Enum):
