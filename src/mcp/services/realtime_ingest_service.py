@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import hashlib
+import json
 from typing import Any, Dict, List, Optional
 
 from mcp.core.routing import apply_routing_decision
@@ -9,13 +11,16 @@ from mcp.models import (
     DevLogBlockEventRequestDTO,
     DevLogBlockEventResponseDTO,
     DevLogBlockTargetDTO,
+    DevLogEventDeliveryState,
     DevLogEventDispatchDTO,
+    DevLogEventPersistenceRecordDTO,
     DevLogSyncResultDTO,
     IngestMessageRequestDTO,
     IngestMessageResponseDTO,
     NarrativeBlockDTO,
 )
-from mcp.output.devlog_client import DevLogClient
+from mcp.output.devlog_client import DevLogClient, DevLogRequestError
+from mcp.persistence import DevLogEventStore, InMemoryEventStore
 
 
 class RealtimeIngestService:
@@ -24,10 +29,12 @@ class RealtimeIngestService:
         llm_client: LlmClient,
         devlog_client: Optional[DevLogClient] = None,
         *,
+        event_store: Optional[DevLogEventStore] = None,
         analysis_version: str = "realtime-v1",
     ) -> None:
         self.llm_client = llm_client
         self.devlog_client = devlog_client
+        self.event_store = event_store or InMemoryEventStore()
         self.analysis_version = analysis_version
 
     def ingest_message(self, request: IngestMessageRequestDTO) -> IngestMessageResponseDTO:
@@ -94,9 +101,7 @@ class RealtimeIngestService:
             return None
 
         active_block_payload = self.devlog_client.get_active_block(session_id)
-        active_block = None
-        if active_block_payload:
-            active_block = active_block_payload
+        active_block = active_block_payload if active_block_payload else None
 
         dispatched_events: List[DevLogEventDispatchDTO] = []
         selected_block_id = str(selected_block.get("blockId", "")).strip()
@@ -182,20 +187,53 @@ class RealtimeIngestService:
                 codeSnippets=[],
             ),
         )
-        response_payload = self.devlog_client.send_block_event(self._model_dump(event))
-        response = DevLogBlockEventResponseDTO(**response_payload) if response_payload else DevLogBlockEventResponseDTO(
-            sessionId=session_id,
-            eventId=event.eventId,
-            status="OK",
-            targetBlockId=target_block_id,
-        )
-        return DevLogEventDispatchDTO(
+        payload = self._model_dump(event)
+        record = self._build_dispatch_record(
+            event_id=event.eventId,
+            session_id=session_id,
+            message_id=message_id,
             operation=operation,
-            eventId=event.eventId,
-            status=response.status,
-            targetBlockId=response.targetBlockId or target_block_id,
-            blockId=response.blockId,
+            payload=payload,
         )
+
+        if record.deliveryState == DevLogEventDeliveryState.DELIVERED:
+            return DevLogEventDispatchDTO(
+                operation=operation,
+                eventId=event.eventId,
+                status=record.lastStatus or "OK",
+                targetBlockId=target_block_id,
+            )
+
+        self.event_store.mark_attempt(event.eventId, last_status="attempting")
+
+        try:
+            response_payload = self.devlog_client.send_block_event(payload)
+            response = (
+                DevLogBlockEventResponseDTO(**response_payload)
+                if response_payload
+                else DevLogBlockEventResponseDTO(
+                    sessionId=session_id,
+                    eventId=event.eventId,
+                    status="OK",
+                    targetBlockId=target_block_id,
+                )
+            )
+            self.event_store.mark_success(event.eventId, last_status=response.status or "OK")
+            return DevLogEventDispatchDTO(
+                operation=operation,
+                eventId=event.eventId,
+                status=response.status,
+                targetBlockId=response.targetBlockId or target_block_id,
+                blockId=response.blockId,
+            )
+        except DevLogRequestError as exc:
+            self.event_store.mark_failure(
+                event.eventId,
+                error=f"status={exc.status_code}: {exc.message}",
+                retryable=exc.retriable,
+                last_status=str(exc.status_code),
+            )
+            raise
 
     def _build_candidate_block_payloads(self, request: IngestMessageRequestDTO) -> List[Dict[str, Any]]:
         candidate_block_payloads: List[Dict[str, Any]] = []
@@ -215,6 +253,35 @@ class RealtimeIngestService:
                 }
             )
         return candidate_block_payloads
+
+    def _build_dispatch_record(
+        self,
+        *,
+        event_id: str,
+        session_id: str,
+        message_id: str,
+        operation: str,
+        payload: Dict[str, Any],
+    ) -> DevLogEventPersistenceRecordDTO:
+        payload_hash = self._hash_payload(payload)
+        previous = self.event_store.get(event_id)
+        if previous is not None:
+            previous.payloadHash = payload_hash
+            previous.sessionId = session_id
+            previous.messageId = message_id
+            previous.operation = operation
+            if hasattr(self.event_store, "save"):
+                self.event_store.save(previous)
+            return previous
+
+        record = DevLogEventPersistenceRecordDTO(
+            eventId=event_id,
+            sessionId=session_id,
+            messageId=message_id,
+            operation=operation,
+            payloadHash=payload_hash,
+        )
+        return self.event_store.create(record)
 
     def _coerce_active_block(self, payload: Dict[str, Any]):
         from mcp.models import DevLogActiveBlockDTO
@@ -239,6 +306,10 @@ class RealtimeIngestService:
 
     def _build_event_id(self, session_id: str, message_id: str, operation: str) -> str:
         return f"evt-{session_id}-{message_id}-{operation.lower()}"
+
+    def _hash_payload(self, payload: Dict[str, Any]) -> str:
+        serialized = json.dumps(payload, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+        return hashlib.sha256(serialized.encode("utf-8")).hexdigest()
 
     def _coerce_block_type(self, payload: Dict[str, Any]) -> str:
         return str(payload.get("blockType", "")).strip() or "proposal"

@@ -5,12 +5,15 @@ import unittest
 from mcp.models import (
     BlockAction,
     CandidateBlockContextDTO,
+    DevLogEventDeliveryState,
     IngestMessageRequestDTO,
     MessageDTO,
     NarrativeBlockStatus,
     NarrativeBlockType,
 )
+from mcp.persistence import InMemoryEventStore
 from mcp.services.realtime_ingest_service import RealtimeIngestService
+from mcp.output.devlog_client import DevLogRequestError
 
 
 class FakeLlmClient:
@@ -38,8 +41,9 @@ class FakeLlmClient:
 
 
 class FakeDevLogClient:
-    def __init__(self, active_block: dict | None) -> None:
+    def __init__(self, active_block: dict | None, send_error: DevLogRequestError | None = None) -> None:
         self.active_block = active_block
+        self.send_error = send_error
         self.sent_events: list[dict] = []
 
     def get_active_block(self, session_id: str) -> dict | None:
@@ -48,6 +52,8 @@ class FakeDevLogClient:
         return dict(self.active_block, sessionId=session_id)
 
     def send_block_event(self, payload: dict) -> dict:
+        if self.send_error is not None:
+            raise self.send_error
         self.sent_events.append(payload)
         return {
             "sessionId": payload["sessionId"],
@@ -144,6 +150,50 @@ class DevLogRealtimeIntegrationTests(unittest.TestCase):
         self.assertEqual(2, len(response.devlog.dispatchedEvents))
         self.assertEqual("FINALIZE_BLOCK", response.devlog.dispatchedEvents[0].operation)
         self.assertEqual("CREATE_BLOCK", response.devlog.dispatchedEvents[1].operation)
+
+    def test_devlog_4xx_marks_event_as_non_retriable(self) -> None:
+        event_store = InMemoryEventStore()
+        service = RealtimeIngestService(
+            llm_client=FakeLlmClient(action="NEW_BLOCK", target_block_id=None),
+            devlog_client=FakeDevLogClient(
+                active_block=None,
+                send_error=DevLogRequestError(400, "invalid payload"),
+            ),
+            event_store=event_store,
+        )
+
+        with self.assertRaises(DevLogRequestError):
+            service.ingest_message(_make_request([]))
+
+        record = event_store.get("evt-sess_1-msg_10-create_block")
+        self.assertIsNotNone(record)
+        self.assertEqual("400", record.lastStatus)
+        self.assertFalse(record.retriable)
+        self.assertIn("status=400", record.lastError)
+        self.assertEqual(1, record.attemptCount)
+        self.assertEqual(DevLogEventDeliveryState.FAILED, record.deliveryState)
+
+    def test_devlog_5xx_marks_event_as_retriable(self) -> None:
+        event_store = InMemoryEventStore()
+        service = RealtimeIngestService(
+            llm_client=FakeLlmClient(action="NEW_BLOCK", target_block_id=None),
+            devlog_client=FakeDevLogClient(
+                active_block=None,
+                send_error=DevLogRequestError(503, "service unavailable"),
+            ),
+            event_store=event_store,
+        )
+
+        with self.assertRaises(DevLogRequestError):
+            service.ingest_message(_make_request([]))
+
+        record = event_store.get("evt-sess_1-msg_10-create_block")
+        self.assertIsNotNone(record)
+        self.assertEqual("503", record.lastStatus)
+        self.assertTrue(record.retriable)
+        self.assertIn("status=503", record.lastError)
+        self.assertEqual(1, record.attemptCount)
+        self.assertEqual(DevLogEventDeliveryState.RETRYABLE_FAILED, record.deliveryState)
 
 
 if __name__ == "__main__":

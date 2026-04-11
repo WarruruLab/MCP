@@ -153,9 +153,52 @@ class DevLogEventDispatchDTO(BaseModel):
     blockId: Optional[int] = None
 
 
+class DevLogEventDeliveryState(str, Enum):
+    PENDING = "pending"
+    ATTEMPTING = "attempting"
+    DELIVERED = "delivered"
+    RETRYABLE_FAILED = "retryable_failed"
+    FAILED = "failed"
+
+
+class DevLogEventPersistenceRecordDTO(BaseModel):
+    eventId: str
+    sessionId: str
+    messageId: str
+    operation: str
+    payloadHash: str
+    attemptCount: int = 0
+    lastStatus: Optional[str] = None
+    lastError: Optional[str] = None
+    deliveryState: DevLogEventDeliveryState = DevLogEventDeliveryState.PENDING
+    retriable: bool = True
+    createdAt: Optional[str] = None
+    updatedAt: Optional[str] = None
+
+
 class DevLogSyncResultDTO(BaseModel):
     activeBlock: Optional[DevLogActiveBlockDTO] = None
     dispatchedEvents: List[DevLogEventDispatchDTO] = Field(default_factory=list)
+
+
+class DevLogDeliveryState(str, Enum):
+    PENDING = "pending"
+    RETRY_PENDING = "retry_pending"
+    SUCCEEDED = "succeeded"
+    FAILED = "failed"
+
+
+class DevLogEventRecordDTO(BaseModel):
+    eventId: str
+    sessionId: str
+    messageId: str
+    operation: str
+    payloadHash: str = ""
+    attemptCount: int = 0
+    lastStatus: str = "PENDING"
+    lastError: str = ""
+    deliveryState: DevLogDeliveryState = DevLogDeliveryState.PENDING
+    retriable: bool = True
 
 
 class DevLogSessionBlockDTO(BaseModel):

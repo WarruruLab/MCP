@@ -7,10 +7,11 @@ from urllib import error, request
 
 
 class DevLogRequestError(RuntimeError):
-    def __init__(self, status_code: int, message: str) -> None:
+    def __init__(self, status_code: int, message: str, *, retriable: bool | None = None) -> None:
         super().__init__(message)
         self.status_code = status_code
         self.message = message
+        self.retriable = retriable if retriable is not None else (status_code == 0 or status_code >= 500)
 
 
 class DevLogClient:
@@ -83,6 +84,6 @@ class DevLogClient:
                 return None
             error_body = exc.read().decode("utf-8", errors="replace").strip()
             message = error_body or exc.reason or "DevLog request failed"
-            raise DevLogRequestError(exc.code, message) from exc
+            raise DevLogRequestError(exc.code, message, retriable=exc.code >= 500) from exc
         except error.URLError as exc:
-            raise DevLogRequestError(0, str(exc.reason)) from exc
+            raise DevLogRequestError(0, str(exc.reason), retriable=True) from exc
