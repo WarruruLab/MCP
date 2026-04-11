@@ -1,13 +1,13 @@
 import unittest
 
-from mcp.core.builder import build_session_blocks
-from mcp.core.summarize import extract_code_snippets, summarize_block
-from mcp.llm.client import LlmClient
-from mcp.models import BuildRequestDTO
+from devlog_mcp_server.core.builder import build_session_blocks
+from devlog_mcp_server.core.summarize import extract_code_snippets, summarize_block
+from devlog_mcp_server.llm.client import LlmClient
+from devlog_mcp_server.models import BuildRequestDTO
 
 try:
     from fastapi.testclient import TestClient
-    from mcp.main import app
+    from devlog_mcp_server.main import app
 except ModuleNotFoundError:
     TestClient = None
     app = None
@@ -33,7 +33,7 @@ class SummarizeTests(unittest.TestCase):
         snippets = extract_code_snippets(
             [
                 ("msg_1", "```yaml\nspring.data.redis.host: redis\n```"),
-                ("msg_2", "$ uvicorn mcp.main:app --app-dir src --reload"),
+                ("msg_2", "$ uvicorn devlog_mcp_server.main:app --app-dir src --reload"),
             ]
         )
 
@@ -41,7 +41,7 @@ class SummarizeTests(unittest.TestCase):
         self.assertEqual("yaml", snippets[0].language)
         self.assertIn("spring.data.redis.host", snippets[0].content)
         self.assertEqual("bash", snippets[1].language)
-        self.assertIn("uvicorn mcp.main:app", snippets[1].content)
+        self.assertIn("uvicorn devlog_mcp_server.main:app", snippets[1].content)
 
 
 class BuilderTests(unittest.TestCase):

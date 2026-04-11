@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import unittest
 
-from mcp.core import decide_finalize_block
+from devlog_mcp_server.core import decide_finalize_block
 
 
 class FinalizeHeuristicTests(unittest.TestCase):

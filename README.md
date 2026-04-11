@@ -223,7 +223,7 @@ LLM은 새 메시지를 독립적으로만 보지 않고, 이미 생성된 block
 
 ```
 mcp/
-├── src/mcp/
+├── src/devlog_mcp_server/
 │   ├── main.py              # FastAPI 앱 · 엔드포인트
 │   ├── models.py            # Request · Response DTO (Pydantic)
 │   ├── core/
@@ -275,7 +275,7 @@ ollama pull qwen2.5:3b
 python3 -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
-uvicorn mcp.main:app --app-dir src --host 0.0.0.0 --port 8000
+uvicorn devlog_mcp_server.main:app --app-dir src --host 0.0.0.0 --port 8000
 ```
 
 ### 테스트

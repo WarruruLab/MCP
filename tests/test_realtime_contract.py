@@ -3,8 +3,8 @@ from __future__ import annotations
 import unittest
 from typing import Any, Dict
 
-from mcp.llm.client import LlmClient
-from mcp.models import (
+from devlog_mcp_server.llm.client import LlmClient
+from devlog_mcp_server.models import (
     BlockAction,
     CandidateBlockContextDTO,
     IngestMessageRequestDTO,

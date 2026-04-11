@@ -62,7 +62,7 @@ MCP 서버의 기본 모델을 batch summary 방식에서 real-time narrative bl
   - narrative block DTO와 routing core, reconciliation core가 분리되었다.
   - message processing state는 `received`, `processing`, `processed`, `failed`, `reconcile_pending` 기준으로 정리되었다.
 - 코드/문서/운영에 반영된 사항
-  - `src/mcp/main.py`, `src/mcp/models.py`, `src/mcp/core/routing.py`, `src/mcp/core/reconciliation.py`, `src/mcp/llm/client.py`에 실시간 경로가 반영되었다.
+  - `src/devlog_mcp_server/main.py`, `src/devlog_mcp_server/models.py`, `src/devlog_mcp_server/core/routing.py`, `src/devlog_mcp_server/core/reconciliation.py`, `src/devlog_mcp_server/llm/client.py`에 실시간 경로가 반영되었다.
   - `tests/test_realtime_contract.py`, `tests/test_exception_reconciliation_contract.py`로 실시간 계약과 복구 계약이 추가되었다.
   - `README.md`, `plan.md`, `mcp_dev_plan.md`, `current_status.md`, `DEV_PROGRESS.md`에 전환 방향이 문서화되었다.
   - 기존 batch endpoint는 전환 중 호환성을 위해 남겨두되, 주 경로는 아니게 되었다.

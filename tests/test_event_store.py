@@ -2,8 +2,8 @@ from __future__ import annotations
 
 import unittest
 
-from mcp.models import DevLogEventDeliveryState, DevLogEventPersistenceRecordDTO
-from mcp.persistence import InMemoryDevLogEventStore, build_payload_hash
+from devlog_mcp_server.models import DevLogEventDeliveryState, DevLogEventPersistenceRecordDTO
+from devlog_mcp_server.persistence import InMemoryDevLogEventStore, build_payload_hash
 
 
 class DevLogEventStoreTests(unittest.TestCase):

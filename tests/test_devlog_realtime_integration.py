@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import unittest
 
-from mcp.models import (
+from devlog_mcp_server.models import (
     BlockAction,
     CandidateBlockContextDTO,
     DevLogEventDeliveryState,
@@ -11,9 +11,9 @@ from mcp.models import (
     NarrativeBlockStatus,
     NarrativeBlockType,
 )
-from mcp.persistence import InMemoryEventStore
-from mcp.services.realtime_ingest_service import RealtimeIngestService
-from mcp.output.devlog_client import DevLogRequestError
+from devlog_mcp_server.persistence import InMemoryEventStore
+from devlog_mcp_server.services.realtime_ingest_service import RealtimeIngestService
+from devlog_mcp_server.output.devlog_client import DevLogRequestError
 
 
 class FakeLlmClient:

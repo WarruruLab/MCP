@@ -47,7 +47,7 @@ OLLAMA_TIMEOUT_SECONDS=10
 
 ```bash
 source .venv/bin/activate
-uvicorn mcp.main:app --app-dir src --host 0.0.0.0 --port 8000
+uvicorn devlog_mcp_server.main:app --app-dir src --host 0.0.0.0 --port 8000
 ```
 
 ## 5. 현재 기준 검증
@@ -94,7 +94,7 @@ Environment=PYTHONPATH=/path/to/mcp/src
 Environment=OLLAMA_BASE_URL=http://127.0.0.1:11434
 Environment=OLLAMA_MODEL=qwen2.5:3b
 Environment=OLLAMA_TIMEOUT_SECONDS=10
-ExecStart=/path/to/mcp/.venv/bin/uvicorn mcp.main:app --app-dir src --host 0.0.0.0 --port 8000
+ExecStart=/path/to/mcp/.venv/bin/uvicorn devlog_mcp_server.main:app --app-dir src --host 0.0.0.0 --port 8000
 Restart=always
 RestartSec=3
 

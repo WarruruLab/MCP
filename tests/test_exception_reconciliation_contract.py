@@ -3,8 +3,8 @@ from __future__ import annotations
 import unittest
 from typing import Iterable, List, Sequence
 
-import mcp.models as models
-from mcp.core.routing import route_message
+import devlog_mcp_server.models as models
+from devlog_mcp_server.core.routing import route_message
 
 
 def _get_processing_state_enum():
