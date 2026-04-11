@@ -64,12 +64,19 @@ class FakeDevLogClient:
 
 
 def _make_request(candidate_blocks: list[CandidateBlockContextDTO]) -> IngestMessageRequestDTO:
+    return _make_request_with_content(candidate_blocks, "Let's adjust the timeout and retry.")
+
+
+def _make_request_with_content(
+    candidate_blocks: list[CandidateBlockContextDTO],
+    content: str,
+) -> IngestMessageRequestDTO:
     return IngestMessageRequestDTO(
         sessionId="sess_1",
         currentMessage=MessageDTO(
             messageId="msg_10",
             role="user",
-            content="Let's adjust the timeout and retry.",
+            content=content,
             timestamp="2026-04-01T10:00:00Z",
         ),
         candidateBlocks=candidate_blocks,
@@ -127,7 +134,7 @@ class DevLogRealtimeIntegrationTests(unittest.TestCase):
         self.assertEqual(1, len(response.devlog.dispatchedEvents))
         self.assertEqual("APPEND", response.devlog.dispatchedEvents[0].operation)
 
-    def test_finalize_then_create_when_active_block_differs(self) -> None:
+    def test_keep_open_when_active_block_differs_without_finalize_signal(self) -> None:
         devlog_client = FakeDevLogClient(
             active_block={
                 "blockId": 101,
@@ -144,6 +151,34 @@ class DevLogRealtimeIntegrationTests(unittest.TestCase):
         )
 
         response = service.ingest_message(_make_request([]))
+
+        self.assertEqual(BlockAction.NEW_BLOCK, response.action)
+        self.assertIsNotNone(response.devlog)
+        self.assertEqual(1, len(response.devlog.dispatchedEvents))
+        self.assertEqual("CREATE_BLOCK", response.devlog.dispatchedEvents[0].operation)
+
+    def test_finalize_then_create_when_message_explicitly_closes_block(self) -> None:
+        devlog_client = FakeDevLogClient(
+            active_block={
+                "blockId": 101,
+                "mcpBlockId": "blk_old",
+                "blockType": "trial",
+                "title": "Old block",
+                "summary": "Old summary",
+                "status": "ACTIVE",
+            }
+        )
+        service = RealtimeIngestService(
+            llm_client=FakeLlmClient(action="NEW_BLOCK", target_block_id=None),
+            devlog_client=devlog_client,
+        )
+
+        request = _make_request_with_content(
+            [],
+            "We are done here. The fix is complete and we should close this block.",
+        )
+
+        response = service.ingest_message(request)
 
         self.assertEqual(BlockAction.NEW_BLOCK, response.action)
         self.assertIsNotNone(response.devlog)

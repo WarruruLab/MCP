@@ -77,7 +77,7 @@ class InMemoryEventStore:
         last_error: Optional[str] = None,
     ) -> DevLogEventPersistenceRecordDTO:
         record = self._require(event_id)
-        updated = record.copy(
+        updated = record.model_copy(
             update={
                 "attemptCount": record.attemptCount + 1,
                 "lastStatus": last_status or "attempting",
@@ -96,7 +96,7 @@ class InMemoryEventStore:
         last_status: Optional[str] = None,
     ) -> DevLogEventPersistenceRecordDTO:
         record = self._require(event_id)
-        updated = record.copy(
+        updated = record.model_copy(
             update={
                 "lastStatus": last_status or "delivered",
                 "lastError": None,
@@ -120,7 +120,7 @@ class InMemoryEventStore:
         record = self._require(event_id)
         resolved_error = error if error is not None else (last_error or "")
         resolved_retryable = retryable if retriable is None else retriable
-        updated = record.copy(
+        updated = record.model_copy(
             update={
                 "lastStatus": last_status or "failed",
                 "lastError": resolved_error,

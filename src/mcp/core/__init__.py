@@ -26,3 +26,4 @@ from .reconciliation import (
     should_reconcile,
     transition_message_processing,
 )
+from .finalize import FinalizeDecision, decide_finalize_block

@@ -4,6 +4,7 @@ import hashlib
 import json
 from typing import Any, Dict, List, Optional
 
+from mcp.core import decide_finalize_block
 from mcp.core.routing import apply_routing_decision
 from mcp.llm.client import LlmClient
 from mcp.models import (
@@ -78,6 +79,8 @@ class RealtimeIngestService:
             session_id=request.sessionId,
             message_id=request.currentMessage.messageId,
             selected_block=selected_block,
+            current_message=current_message,
+            recent_messages=recent_messages,
         )
 
         return IngestMessageResponseDTO(
@@ -96,6 +99,8 @@ class RealtimeIngestService:
         session_id: str,
         message_id: str,
         selected_block: Dict[str, Any],
+        current_message: Dict[str, Any],
+        recent_messages: List[Dict[str, Any]],
     ) -> Optional[DevLogSyncResultDTO]:
         if self.devlog_client is None:
             return None
@@ -132,16 +137,23 @@ class RealtimeIngestService:
                 )
             )
         else:
-            dispatched_events.append(
-                self._send_event(
-                    session_id=session_id,
-                    message_id=message_id,
-                    operation="FINALIZE_BLOCK",
-                    block_payload=active_block,
-                    target_block_id=active_mcp_block_id,
-                    status="CLOSED",
-                )
+            finalize_decision = decide_finalize_block(
+                active_block=active_block,
+                selected_block=selected_block,
+                current_message=current_message,
+                recent_messages=recent_messages,
             )
+            if finalize_decision.should_finalize:
+                dispatched_events.append(
+                    self._send_event(
+                        session_id=session_id,
+                        message_id=message_id,
+                        operation="FINALIZE_BLOCK",
+                        block_payload=active_block,
+                        target_block_id=active_mcp_block_id,
+                        status="CLOSED",
+                    )
+                )
             dispatched_events.append(
                 self._send_event(
                     session_id=session_id,
