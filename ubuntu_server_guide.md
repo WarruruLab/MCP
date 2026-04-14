@@ -33,12 +33,16 @@ cp .env.example .env
 
 ## 3. 환경변수
 
-현재 local LLM 연동 예시는 Ollama 기준이다.
+현재 local LLM 연동 예시는 Docker-style service name 기준이다.
 
 ```bash
-OLLAMA_BASE_URL=http://127.0.0.1:11434
+OLLAMA_BASE_URL=http://ollama:11434
 OLLAMA_MODEL=qwen2.5:3b
 OLLAMA_TIMEOUT_SECONDS=10
+DEVLOG_BASE_URL=http://devlog-backend:8081
+DEVLOG_INTERNAL_API_KEY=
+DEVLOG_TIMEOUT_SECONDS=10
+MCP_CORS_ALLOW_ORIGINS=
 ```
 
 이 값은 이후 narrative block 분류에 맞는 local LLM으로 교체될 수 있다.
@@ -91,9 +95,13 @@ After=network.target
 User=ubuntu
 WorkingDirectory=/path/to/mcp
 Environment=PYTHONPATH=/path/to/mcp/src
-Environment=OLLAMA_BASE_URL=http://127.0.0.1:11434
+Environment=OLLAMA_BASE_URL=http://ollama:11434
 Environment=OLLAMA_MODEL=qwen2.5:3b
 Environment=OLLAMA_TIMEOUT_SECONDS=10
+Environment=DEVLOG_BASE_URL=http://devlog-backend:8081
+Environment=DEVLOG_INTERNAL_API_KEY=
+Environment=DEVLOG_TIMEOUT_SECONDS=10
+Environment=MCP_CORS_ALLOW_ORIGINS=
 ExecStart=/path/to/mcp/.venv/bin/uvicorn devlog_mcp_server.main:app --app-dir src --host 0.0.0.0 --port 8000
 Restart=always
 RestartSec=3

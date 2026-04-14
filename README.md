@@ -13,11 +13,11 @@
 
 저는 Spring Boot · Java가 주력이고 Python에 익숙하지 않습니다. 그래서 이 서버는 설계와 코드 작성 역할을 분리하는 방식으로 개발했습니다.
 
-| 역할 | 담당 | 내용 |
-|:---|:---:|:---|
+| 역할      |   담당    | 내용                                                        |
+| :-------- | :-------: | :---------------------------------------------------------- |
 | 설계 결정 | 직접 + AI | `plan.md`에 구조, block 의미, 예외 처리 방식을 정리 후 검토 |
-| 코드 작성 | AI | 결정된 설계를 바탕으로 Python 코드 생성 |
-| 검증 | 직접 | 실제로 실행하고 테스트하며 결과 확인 |
+| 코드 작성 |    AI     | 결정된 설계를 바탕으로 Python 코드 생성                     |
+| 검증      |   직접    | 실제로 실행하고 테스트하며 결과 확인                        |
 
 **이렇게 한 이유**: Python 문법 자체보다 어떤 구조의 서버를 왜 만드는지가 더 중요했습니다. 단순히 코드를 받아 붙여넣는 것이 아니라, block의 의미와 제품 흐름을 먼저 정하고 그에 맞는 구현을 검증하는 방식을 택했습니다.
 
@@ -29,11 +29,11 @@
 
 > MCP Server는 **WarruruLab**의 두 번째 서비스입니다.
 
-| | 개발톡(DevTalk) | MCP Server | 개발로그(DevLog) |
-|:---:|:---:|:---:|:---:|
+|          |        개발톡(DevTalk)        |            MCP Server             |       개발로그(DevLog)        |
+| :------: | :---------------------------: | :-------------------------------: | :---------------------------: |
 | **역할** | AI 대화로 문제 해결 로그 생성 | 메시지를 의미 단위 block으로 분류 | block 선택 → 블로그 초안 생성 |
-| **기술** | Spring Boot · Java 21 | FastAPI · Python · Ollama | Spring Boot · Java 21 |
-| **출력** | Session · Message 저장 | session_block | 블로그 글 초안 |
+| **기술** |     Spring Boot · Java 21     |     FastAPI · Python · Ollama     |     Spring Boot · Java 21     |
+| **출력** |    Session · Message 저장     |           session_block           |        블로그 글 초안         |
 
 서비스 간 호출은 개발로그(DevLog)가 주도하며, MCP Server는 요청이 오면 분석 결과를 반환하는 역할입니다.
 
@@ -76,29 +76,29 @@ DevLog ──── REST ────▶ MCP Server
 
 현재는 block 의미, block 타입, DB 구조, DevLog와의 연결 방식을 narrative 기준으로 다시 정리하고 있습니다. 핵심은 block 하나가 모든 정보를 다 가지는 것이 아니라, **문제 / 제안 / 시도 / 결과 / 인사이트 중 하나의 역할만 가지도록 설계하는 것**입니다.
 
-| 항목 | 상태 | 설명 |
-|:---|:---:|:---|
-| narrative block 의미 정의 | ✅ 완료 | 문서와 설계 기준 정리 완료 |
-| block type / status 설계 | ✅ 완료 | `problem / proposal / trial / result / insight` 기준 |
-| MySQL 테이블 전환안 | ✅ 완료 | narrative block 기준 SQL 파일 작성 |
-| README / plan / 개발 문서 정리 | ✅ 완료 | narrative 구조 기준으로 정리 |
-| `ingest-message` API | ✅ 완료 | candidate block 기반 실시간 입력 경로 추가 |
-| local LLM block classifier | ✅ 완료 | 기존 block 선택 또는 새 block 생성 판단 가능 |
-| active block 상태 반영 로직 | ✅ 완료 | LLM 결정값을 block state에 반영 가능 |
-| 예외 복구 / reconciliation | ❌ 미완료 | 실패 메시지 재처리와 누락 메시지 복구는 다음 단계 |
+| 항목                           |   상태    | 설명                                                 |
+| :----------------------------- | :-------: | :--------------------------------------------------- |
+| narrative block 의미 정의      |  ✅ 완료  | 문서와 설계 기준 정리 완료                           |
+| block type / status 설계       |  ✅ 완료  | `problem / proposal / trial / result / insight` 기준 |
+| MySQL 테이블 전환안            |  ✅ 완료  | narrative block 기준 SQL 파일 작성                   |
+| README / plan / 개발 문서 정리 |  ✅ 완료  | narrative 구조 기준으로 정리                         |
+| `ingest-message` API           |  ✅ 완료  | candidate block 기반 실시간 입력 경로 추가           |
+| local LLM block classifier     |  ✅ 완료  | 기존 block 선택 또는 새 block 생성 판단 가능         |
+| active block 상태 반영 로직    |  ✅ 완료  | LLM 결정값을 block state에 반영 가능                 |
+| 예외 복구 / reconciliation     | ❌ 미완료 | 실패 메시지 재처리와 누락 메시지 복구는 다음 단계    |
 
 <br/>
 
 ## 기술 스택
 
-| 영역 | 기술 | 선택 이유 |
-|:---|:---|:---|
-| Server | FastAPI · Python · uvicorn | MCP · AI 생태계 라이브러리가 Python에 집중되어 있음 |
-| LLM | Ollama (`qwen2.5:3b`) | 외부 API 없이 로컬에서 실행 가능 |
-| 검증 | Pydantic | 요청 · 응답 스키마 강제 |
-| 배포 | Ubuntu · systemd | 개인 서버에 상시 운영 |
-| 테스트 | unittest | 핵심 로직 단위 테스트 |
-| DB 방향 | MySQL | DevLog 테이블과 바로 맞물려 운영 예정 |
+| 영역    | 기술                       | 선택 이유                                           |
+| :------ | :------------------------- | :-------------------------------------------------- |
+| Server  | FastAPI · Python · uvicorn | MCP · AI 생태계 라이브러리가 Python에 집중되어 있음 |
+| LLM     | Ollama (`qwen2.5:3b`)      | 외부 API 없이 로컬에서 실행 가능                    |
+| 검증    | Pydantic                   | 요청 · 응답 스키마 강제                             |
+| 배포    | Ubuntu · systemd           | 개인 서버에 상시 운영                               |
+| 테스트  | unittest                   | 핵심 로직 단위 테스트                               |
+| DB 방향 | MySQL                      | DevLog 테이블과 바로 맞물려 운영 예정               |
 
 <br/>
 
@@ -124,13 +124,13 @@ DevLog가 block을 선택해 글 흐름 구성
 
 기존에는 block 하나에 아래 5-tag를 모두 넣는 구조를 사용했습니다.
 
-| 태그 | 의미 | 기존 방식 |
-|:---|:---|:---|
-| `CONTEXT` | 어떤 작업 흐름인지 | 첫 문장 기반 추출 |
-| `PROBLEM` | 핵심 문제 | 키워드 문장 추출 |
-| `TRIAL` | 시도한 내용 | 키워드 문장 최대 3개 |
-| `SOLUTION` | 해결 방법 | 키워드 문장 추출 |
-| `INSIGHT` | 인사이트 | 키워드 문장 추출 |
+| 태그       | 의미               | 기존 방식            |
+| :--------- | :----------------- | :------------------- |
+| `CONTEXT`  | 어떤 작업 흐름인지 | 첫 문장 기반 추출    |
+| `PROBLEM`  | 핵심 문제          | 키워드 문장 추출     |
+| `TRIAL`    | 시도한 내용        | 키워드 문장 최대 3개 |
+| `SOLUTION` | 해결 방법          | 키워드 문장 추출     |
+| `INSIGHT`  | 인사이트           | 키워드 문장 추출     |
 
 하지만 narrative block 구조에서는 block 하나가 모든 태그를 다 갖지 않습니다.
 
@@ -158,7 +158,11 @@ DevLog가 block을 선택해 글 흐름 구성
     "INSIGHT": "도커 네트워크 내부 hostname 사용 필요"
   },
   "code_snippets": [
-    { "language": "yaml", "content": "spring.data.redis.host: redis", "sourceMessageId": "msg_007" }
+    {
+      "language": "yaml",
+      "content": "spring.data.redis.host: redis",
+      "sourceMessageId": "msg_007"
+    }
   ],
   "confidence": 0.5
 }
@@ -289,16 +293,27 @@ PYTHONPATH=src .venv/bin/python -m unittest discover -s tests -v
 ```bash
 chmod +x deploy/setup_ubuntu.sh deploy/check_ubuntu.sh
 ./deploy/setup_ubuntu.sh /opt/mcp mcp
-./deploy/check_ubuntu.sh http://127.0.0.1:8000
+MCP_BASE_URL=http://127.0.0.1:8000 ./deploy/check_ubuntu.sh
 ```
 
 ### 환경변수
 
-| 변수명 | 설명 | 기본값 |
-|:---|:---|:---|
-| `OLLAMA_BASE_URL` | Ollama 서버 주소 | `http://127.0.0.1:11434` |
-| `OLLAMA_MODEL` | 사용할 모델명 | `qwen2.5:3b` |
-| `OLLAMA_TIMEOUT_SECONDS` | Ollama 응답 제한 시간 | `10` |
+| 변수명                      | 설명                             | 기본값                                           |
+| :-------------------------- | :------------------------------- | :----------------------------------------------- |
+| `OLLAMA_BASE_URL`           | Ollama 서버 주소                 | `http://ollama:11434`                            |
+| `OLLAMA_MODEL`              | 사용할 모델명                    | `qwen2.5:3b`                                     |
+| `OLLAMA_TIMEOUT_SECONDS`    | Ollama 응답 제한 시간            | `10`                                             |
+| `DEVLOG_BASE_URL`           | DevLog 백엔드 주소               | `http://devlog-backend:8081`                     |
+| `DEVLOG_INTERNAL_API_KEY`   | DevLog 내부 API 키               | ``                                               |
+| `DEVLOG_TIMEOUT_SECONDS`    | DevLog 응답 제한 시간            | `10`                                             |
+| `MCP_CORS_ALLOW_ORIGINS`    | MCP 직접 호출 허용 origin 목록   | ``                                               |
+| `RUN_LOCAL_LLM_TEST`        | 100개 더미 데이터 통합 검증 여부 | `0`                                              |
+| `MCP_BASE_URL`              | 통합 검증용 MCP 주소             | `http://mcp:8000`                                |
+| `LOCAL_LLM_SMOKE_COUNT`     | 통합 검증 처리 메시지 수         | `100`                                            |
+| `LOCAL_LLM_RECENT_LIMIT`    | recentMessages 최대 개수         | `8`                                              |
+| `LOCAL_LLM_CANDIDATE_LIMIT` | candidateBlocks 최대 개수        | `8`                                              |
+| `LOCAL_LLM_HTTP_TIMEOUT`    | 통합 검증 HTTP 제한 시간         | `120`                                            |
+| `LOCAL_LLM_REPORT_PATH`     | 통합 검증 리포트 경로            | `artifacts/realtime_dummy_local_llm_report.json` |
 
 > 현재 Ollama는 local LLM 연동 경로의 기준 모델입니다.
 > 이후 narrative block 구조가 코드에 반영되면, 메시지 단위 block 분류기로 사용될 예정입니다.

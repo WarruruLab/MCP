@@ -29,6 +29,7 @@ echo "[5/7] env file setup"
 if [[ ! -f ".env" && -f ".env.example" ]]; then
   cp .env.example .env
   echo "Created .env from .env.example. Edit values before production use."
+  echo "Default values assume Docker-style service names: mcp, ollama, and devlog-backend."
 fi
 
 echo "[6/7] systemd service install"

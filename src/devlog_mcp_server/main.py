@@ -1,6 +1,9 @@
 from __future__ import annotations
 
+import os
+
 from fastapi import FastAPI, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
 
 from devlog_mcp_server.core.builder import build_session_blocks
 from devlog_mcp_server.llm.client import LlmClient
@@ -10,6 +13,23 @@ from devlog_mcp_server.services.realtime_ingest_service import RealtimeIngestSer
 from devlog_mcp_server.utils.validate import normalize_role, parse_iso8601, require_non_empty, validate_roles
 
 app = FastAPI(title="MCP", version="0.1.0")
+
+
+def _parse_csv_env(name: str) -> list[str]:
+    raw = os.getenv(name, "")
+    return [value.strip() for value in raw.split(",") if value.strip()]
+
+
+allow_origins = _parse_csv_env("MCP_CORS_ALLOW_ORIGINS")
+if allow_origins:
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=allow_origins,
+        allow_credentials=True,
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
+
 llm_client = LlmClient()
 realtime_ingest_service = RealtimeIngestService(llm_client, DevLogClient())
 ALLOWED_ANALYSIS_MODES = {"FULL", "INCREMENTAL"}

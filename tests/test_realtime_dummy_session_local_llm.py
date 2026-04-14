@@ -133,7 +133,7 @@ class LocalLlmRealtimeDummySessionTests(unittest.TestCase):
             _read_env_int("LOCAL_LLM_SMOKE_COUNT", len(messages)),
         )
         recent_limit = _read_env_int("LOCAL_LLM_RECENT_LIMIT", DEFAULT_RECENT_LIMIT)
-        candidate_limit = DEFAULT_CANDIDATE_LIMIT
+        candidate_limit = _read_env_int("LOCAL_LLM_CANDIDATE_LIMIT", DEFAULT_CANDIDATE_LIMIT)
         timeout_seconds = _read_env_int("LOCAL_LLM_HTTP_TIMEOUT", DEFAULT_HTTP_TIMEOUT)
         base_url = os.getenv("MCP_BASE_URL", DEFAULT_BASE_URL).rstrip("/")
         endpoint = f"{base_url}/v1/session-blocks:ingest-message"
