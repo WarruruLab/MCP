@@ -1,0 +1,11 @@
+.git
+.idea
+infra/.env
+.venv
+__pycache__
+tests/__pycache__
+artifacts
+docs
+examples
+deploy
+
