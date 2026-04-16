@@ -23,4 +23,10 @@ services:
       timeout: 5s
       retries: 10
       start_period: 20s
+    networks:
+      - warruru-shared
 
+networks:
+  warruru-shared:
+    name: warruru-shared
+    external: true
