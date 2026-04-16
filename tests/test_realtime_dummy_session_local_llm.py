@@ -2,7 +2,9 @@ from __future__ import annotations
 
 import json
 import os
+import subprocess
 import unittest
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Tuple
 from urllib import error, request
@@ -13,6 +15,10 @@ DEFAULT_BASE_URL = "http://127.0.0.1:8000"
 DEFAULT_RECENT_LIMIT = 8
 DEFAULT_CANDIDATE_LIMIT = 8
 DEFAULT_HTTP_TIMEOUT = 120
+DEFAULT_DEVLOG_DB_CONTAINER = "devlog-db"
+DEFAULT_DEVLOG_DB_NAME = "devlog"
+DEFAULT_DEVLOG_DB_USER = "devlog_app"
+DEFAULT_DEVLOG_DB_PASSWORD = "change-me"
 
 
 def _read_env_int(name: str, default: int, *, minimum: int = 1) -> int:
@@ -40,6 +46,144 @@ def _load_dataset() -> Tuple[str, List[Dict[str, Any]]]:
     if not messages:
         raise AssertionError("dataset messages must not be empty")
     return session_id, messages
+
+
+def _parse_dataset_timestamp(raw: str) -> datetime:
+    normalized = raw.replace("Z", "+00:00")
+    parsed = datetime.fromisoformat(normalized)
+    if parsed.tzinfo is None:
+        return parsed.replace(tzinfo=timezone.utc)
+    return parsed.astimezone(timezone.utc)
+
+
+def _to_mysql_datetime(raw: str) -> str:
+    return _parse_dataset_timestamp(raw).replace(tzinfo=None).strftime("%Y-%m-%d %H:%M:%S")
+
+
+def _sql_string(value: str) -> str:
+    return "'" + value.replace("\\", "\\\\").replace("'", "''") + "'"
+
+
+def _seed_devlog_session_and_messages(session_id: str, messages: List[Dict[str, Any]]) -> None:
+    if not messages:
+        raise AssertionError("messages must not be empty")
+
+    container = os.getenv("DEVLOG_DB_CONTAINER", DEFAULT_DEVLOG_DB_CONTAINER)
+    database = os.getenv("DEVLOG_DB_NAME", DEFAULT_DEVLOG_DB_NAME)
+    username = os.getenv("DEVLOG_DB_USER", DEFAULT_DEVLOG_DB_USER)
+    password = os.getenv("DEVLOG_DB_PASSWORD", DEFAULT_DEVLOG_DB_PASSWORD)
+    title = os.getenv("LOCAL_LLM_TEST_SESSION_TITLE", "Realtime dummy session 100")
+    last_message_at = _to_mysql_datetime(str(messages[-1]["timestamp"]))
+    synced_count = len(messages)
+
+    delete_sql = f"""
+DELETE FROM draft_block
+WHERE draft_id IN (SELECT draft_id FROM draft WHERE session_id = {_sql_string(session_id)});
+DELETE FROM draft WHERE session_id = {_sql_string(session_id)};
+DELETE FROM session_block_message WHERE session_id = {_sql_string(session_id)};
+DELETE FROM session_block WHERE session_id = {_sql_string(session_id)};
+DELETE FROM mcp_ingest_event WHERE session_id = {_sql_string(session_id)};
+DELETE FROM session_message WHERE session_id = {_sql_string(session_id)};
+DELETE FROM logical_session WHERE session_id = {_sql_string(session_id)};
+"""
+
+    insert_session_sql = f"""
+INSERT INTO logical_session (
+    session_id,
+    source_session_id,
+    title,
+    session_status,
+    sync_status,
+    analysis_status,
+    total_message_count,
+    synced_message_count,
+    structured_message_count,
+    unstructured_message_count,
+    block_count,
+    last_message_at,
+    last_synced_at,
+    last_analyzed_at,
+    sync_error_message,
+    analysis_error_message
+) VALUES (
+    {_sql_string(session_id)},
+    {_sql_string(session_id)},
+    {_sql_string(title)},
+    'READY',
+    'DONE',
+    'IDLE',
+    {synced_count},
+    {synced_count},
+    0,
+    {synced_count},
+    0,
+    {_sql_string(last_message_at)},
+    NOW(),
+    NULL,
+    NULL,
+    NULL
+);
+"""
+
+    message_values = []
+    for message in messages:
+        message_values.append(
+            "("
+            + ", ".join(
+                [
+                    _sql_string(str(message["messageId"])),
+                    _sql_string(session_id),
+                    _sql_string(str(message["role"]).upper()),
+                    "NULL",
+                    _sql_string(str(message["content"])),
+                    _sql_string(_to_mysql_datetime(str(message["timestamp"]))),
+                    "'PENDING'",
+                    "NULL",
+                ]
+            )
+            + ")"
+        )
+
+    insert_messages_sql = """
+INSERT INTO session_message (
+    message_id,
+    session_id,
+    role,
+    author_name,
+    content,
+    message_created_at,
+    structure_status,
+    structured_at
+) VALUES
+"""
+    insert_messages_sql += ",\n".join(message_values) + ";\n"
+
+    full_sql = delete_sql + insert_session_sql + insert_messages_sql
+
+    command = [
+        "docker",
+        "exec",
+        "-i",
+        container,
+        "mysql",
+        f"-u{username}",
+        f"-p{password}",
+        database,
+    ]
+
+    try:
+        subprocess.run(
+            command,
+            input=full_sql.encode("utf-8"),
+            check=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+        )
+    except FileNotFoundError as exc:
+        raise AssertionError("docker command is required to seed DevLog test data") from exc
+    except subprocess.CalledProcessError as exc:
+        stderr = exc.stderr.decode("utf-8", errors="replace")
+        raise AssertionError(f"failed to seed DevLog test data: {stderr}") from exc
 
 
 def _normalize_action(action: Any) -> str:
@@ -128,6 +272,7 @@ class LocalLlmRealtimeDummySessionTests(unittest.TestCase):
 
     def test_realtime_dummy_session_100_messages(self) -> None:
         session_id, messages = _load_dataset()
+        _seed_devlog_session_and_messages(session_id, messages)
         smoke_count = min(
             len(messages),
             _read_env_int("LOCAL_LLM_SMOKE_COUNT", len(messages)),
