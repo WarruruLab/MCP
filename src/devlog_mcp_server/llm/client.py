@@ -119,16 +119,46 @@ class LlmClient:
             "recentMessages": [self._compact_mapping(message) for message in recent_messages],
         }
         return (
-            "You classify a new chat message against existing narrative blocks.\n"
-            "Select the best existing block when it fits, otherwise create a new block.\n"
+            "Role:\n"
+            "You are a narrative block classifier for a development work log.\n"
+            "Your job is to decide whether the current message should be appended to one existing block or start a new block.\n\n"
+            "Task:\n"
+            "Read the current message, recent messages, and candidate blocks.\n"
+            "Choose APPEND only when the current message clearly continues the same narrative thread as one candidate block.\n"
+            "Choose NEW_BLOCK when the message introduces a new issue, a new work item, a new document task, a new deployment/config topic, a new model/tool discussion, or any noticeable topic shift.\n\n"
+            "Positive rules:\n"
+            "1. Prefer semantic precision over continuity. A long session can contain many blocks.\n"
+            "2. Use APPEND only when the message belongs to the same bug, same root cause analysis, same fix attempt, same result chain, or same tightly connected subtask.\n"
+            "3. Use NEW_BLOCK when the topic changes, even if the broader project is still the same.\n"
+            "4. Treat changes like these as strong NEW_BLOCK signals: moving from bug report to CORS, nginx, Docker, README/docs, prompt tuning, threshold tuning, reconciliation, model selection, deployment, or testing strategy.\n"
+            "5. Explicit transition cues such as '이제', '다른', '문서', '배포', 'nginx', 'CORS', 'README', 'prompt', 'threshold', 'reconciliation', 'model', 'llm', '테스트' usually indicate a new block unless the candidate block already covers that exact topic.\n"
+            "6. If the message is ambiguous or only loosely related, choose NEW_BLOCK instead of APPEND.\n"
+            "7. topic should be a short concrete phrase representing the actual work item, not a vague project-wide label.\n"
+            "8. summary should be one short sentence capturing the current message's role in the block.\n"
+            "9. tags must be compact and only include fields that matter for the chosen block.\n\n"
+            "Negative rules:\n"
+            "1. Do not append just because the session already has an open block.\n"
+            "2. Do not append just because the message shares generic words like server, error, docker, devlog, devtalk, mcp, or login.\n"
+            "3. Do not collapse multiple distinct work items into one block.\n"
+            "4. Do not choose APPEND unless you can point to one clearly matching candidate block.\n"
+            "5. If no candidate is a clear match, action must be NEW_BLOCK.\n\n"
+            "Output rules:\n"
             "Return JSON only with keys action, targetBlockId, blockType, status, topic, summary, tags, score, reason.\n"
             'action must be either "APPEND" or "NEW_BLOCK".\n'
-            "If action is APPEND, targetBlockId must point to one of the candidateBlocks.\n"
-            "If no candidate fits, action must be NEW_BLOCK and targetBlockId must be null.\n"
+            "If action is APPEND, targetBlockId must be one of the candidate block IDs.\n"
+            "If action is NEW_BLOCK, targetBlockId must be null.\n"
             "blockType must be one of problem, proposal, trial, result, insight.\n"
             "status must be one of open, neutral, failed, success.\n"
-            "tags must be a compact object with only the fields that matter for the chosen block.\n\n"
-            f"{json.dumps(payload, ensure_ascii=False)}"
+            "score must be between 0 and 1 and reflect confidence.\n"
+            "reason must be a short snake_case explanation.\n\n"
+            "Few-shot guidance:\n"
+            "Example 1: existing block is 'login 500 after local devlog startup', current message is 'CORS origin needs update for warurulab.site'. This should be NEW_BLOCK because it is a different operational issue.\n"
+            "Example 2: existing block is 'MCP 100-message test keeps appending to one block', current message is 'raise append threshold and update prompt'. This can be APPEND if the candidate block is already about the same prompt/threshold tuning work.\n"
+            "Example 3: existing block is 'README deployment guide update', current message is 'add nginx reverse proxy note'. This can be APPEND if the candidate block is the README/doc update block.\n\n"
+            "---\n"
+            "[input]\n"
+            f"{json.dumps(payload, ensure_ascii=False)}\n"
+            "---"
         )
 
     def _generate(self, prompt: str, format_schema: Optional[Dict[str, Any]] = None) -> str:
@@ -241,20 +271,6 @@ class LlmClient:
         current_message: Mapping[str, Any],
         candidate_blocks: Sequence[Mapping[str, Any]],
     ) -> NarrativeBlockClassification:
-        candidate_block = self._choose_candidate_block(candidate_blocks)
-        if candidate_block is not None:
-            return NarrativeBlockClassification(
-                action="APPEND",
-                target_block_id=self._stringify(candidate_block.get("blockId")),
-                block_type=self._stringify(candidate_block.get("blockType")).lower() or "trial",
-                status=self._stringify(candidate_block.get("status")).lower() or "neutral",
-                topic=self._stringify(candidate_block.get("topic")) or self._infer_topic(current_message),
-                summary=self._stringify(candidate_block.get("summary")) or self._short_text(current_message.get("content", "")),
-                tags=self._coerce_dict(candidate_block.get("tags")),
-                score=0.5,
-                reason="fallback_existing_candidate",
-            )
-
         inferred_block_type = self._infer_block_type(current_message)
         inferred_status = "open" if inferred_block_type == "problem" else "neutral"
         return NarrativeBlockClassification(
@@ -266,7 +282,7 @@ class LlmClient:
             summary=self._short_text(current_message.get("content", "")),
             tags=self._infer_tags(current_message, inferred_block_type),
             score=0.5,
-            reason="fallback_new_block",
+            reason="fallback_conservative_new_block",
         )
 
     def _coerce_json_object(self, response_text: str) -> Dict[str, Any]:

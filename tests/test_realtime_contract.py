@@ -165,7 +165,7 @@ class RealtimeNarrativeContractTests(unittest.TestCase):
         self.assertEqual("success", result.status)
         self.assertEqual("new_narrative_step", result.reason)
 
-    def test_invalid_classifier_output_falls_back_to_existing_candidate_block(self) -> None:
+    def test_invalid_classifier_output_falls_back_to_new_block(self) -> None:
         client = LlmClient(model="fake-model", base_url="http://127.0.0.1:11434", timeout_seconds=0.01)
         original_generate = client._generate
 
@@ -197,9 +197,9 @@ class RealtimeNarrativeContractTests(unittest.TestCase):
         finally:
             client._generate = original_generate  # type: ignore[method-assign]
 
-        self.assertEqual("APPEND", result.action)
-        self.assertEqual("blk_2", result.target_block_id)
-        self.assertEqual("fallback_existing_candidate", result.reason)
+        self.assertEqual("NEW_BLOCK", result.action)
+        self.assertIsNone(result.target_block_id)
+        self.assertEqual("fallback_conservative_new_block", result.reason)
         self.assertEqual("trial", result.block_type)
         self.assertEqual("neutral", result.status)
 
