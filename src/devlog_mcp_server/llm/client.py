@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import os
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any, Dict, List, Mapping, Optional, Sequence
 from urllib import error, request
 
@@ -25,6 +26,74 @@ class NarrativeBlockClassification:
     tags: Dict[str, object]
     score: float
     reason: str
+
+
+DEFAULT_APPEND_PROMPT_TEMPLATE = (
+    "You decide whether a new message should be appended to the current session block.\n"
+    "Return JSON only with keys action, score, reason.\n"
+    'action must be either "APPEND" or "NEW_BLOCK".\n'
+    "score must be a float between 0 and 1.\n"
+    "reason must be a short snake_case string.\n\n"
+    "{{CONTEXT}}"
+)
+
+
+DEFAULT_NARRATIVE_PROMPT_TEMPLATE = (
+    "You are a narrative block router for a development work log.\n"
+    "Your first job is routing: decide whether the current message belongs to one existing candidate block or starts a new block.\n"
+    "A block is one coherent work unit, such as one bug investigation, one CORS issue, one doc update, one prompt-tuning discussion, one reconciliation design discussion, or one model-selection discussion.\n\n"
+    "Decision procedure:\n"
+    "1. Read currentMessage.\n"
+    "2. Compare it with each candidate block.\n"
+    "3. Choose APPEND only when one candidate clearly matches the same concrete work unit.\n"
+    "4. Choose NEW_BLOCK when the message starts a different concrete work unit.\n"
+    "5. Do not create one block per message.\n"
+    "6. Do not append only because the same project is being discussed.\n"
+    "7. Generic word overlap is not enough.\n"
+    "8. If uncertain, prefer NEW_BLOCK.\n\n"
+    "Strong APPEND signals:\n"
+    "- follow-up question in the same issue\n"
+    "- same bug, same design topic, same tuning thread\n"
+    "- same investigation or same fix attempt\n"
+    "- result or observation from the same trial\n\n"
+    "Strong NEW_BLOCK signals:\n"
+    "- switching from bug A to bug B\n"
+    "- switching from debugging to docs\n"
+    "- switching from prompt tuning to DB schema\n"
+    "- switching from CORS to model selection\n"
+    "- switching from reconciliation design to deployment\n\n"
+    "Metadata rules:\n"
+    "- After routing, fill blockType, status, topic, summary, and tags.\n"
+    "- Keep topic short and concrete.\n"
+    "- Keep summary to one sentence.\n"
+    "- Keep tags compact and specific.\n"
+    "- blockType must be one of problem, proposal, trial, result, insight.\n"
+    "- status must be one of open, neutral, failed, success.\n"
+    "- problem = bug, symptom, failure, obstacle.\n"
+    "- proposal = idea, option, hypothesis, plan.\n"
+    "- trial = trying, changing, testing, checking, logging.\n"
+    "- result = observed outcome after a trial.\n"
+    "- insight = root cause, lesson, or design conclusion.\n\n"
+    "Output rules:\n"
+    "Return JSON only with keys action, targetBlockId, blockType, status, topic, summary, tags, score, reason.\n"
+    'action must be either "APPEND" or "NEW_BLOCK".\n'
+    "If action is APPEND, targetBlockId must be one of the candidate block IDs.\n"
+    "If action is NEW_BLOCK, targetBlockId must be null.\n"
+    "score must be between 0 and 1.\n"
+    "reason must be a short snake_case string.\n"
+    "No extra text.\n\n"
+    "Examples:\n"
+    "- Existing block: 'login 500 after local startup'. Current message: 'checked backend log and saw null pointer in auth service'. Output should be APPEND.\n"
+    "- Existing block: 'login 500 after local startup'. Current message: 'CORS origin needs update for localhost frontend'. Output should be NEW_BLOCK.\n"
+    "- Existing block: 'README deployment guide update'. Current message: 'add nginx reverse proxy note'. Output should be APPEND.\n"
+    "- Existing block: 'prompt tuning for over-grouping'. Current message: 'now it over-splits, one block per message'. Output should be APPEND.\n"
+    "- Existing block: 'reconciliation design'. Current message: 'let us compare whole session messages with block_messages'. Output should be APPEND.\n"
+    "- Existing block: 'reconciliation design'. Current message: 'which llm model should we use for classification'. Output should be NEW_BLOCK.\n\n"
+    "---\n"
+    "[input]\n"
+    "{{PAYLOAD_JSON}}\n"
+    "---"
+)
 
 
 class LlmClient:
@@ -96,14 +165,12 @@ class LlmClient:
             return self._generate(prompt)
 
     def _build_prompt(self, context: str) -> str:
-        return (
-            "You decide whether a new message should be appended to the current session block.\n"
-            "Return JSON only with keys action, score, reason.\n"
-            'action must be either "APPEND" or "NEW_BLOCK".\n'
-            "score must be a float between 0 and 1.\n"
-            "reason must be a short snake_case string.\n\n"
-            f"{context}"
+        template = self._resolve_prompt_template(
+            file_env_name="MCP_APPEND_PROMPT_FILE",
+            text_env_name="MCP_APPEND_PROMPT_TEMPLATE",
+            default_template=DEFAULT_APPEND_PROMPT_TEMPLATE,
         )
+        return template.replace("{{CONTEXT}}", context)
 
     def _build_narrative_prompt(
         self,
@@ -118,83 +185,38 @@ class LlmClient:
             "candidateBlocks": [self._compact_candidate_block(block) for block in candidate_blocks],
             "recentMessages": [self._compact_mapping(message) for message in recent_messages],
         }
-        return (
-            "Role:\n"
-            "You are a narrative block classifier for a development work log.\n"
-            "Your job is to decide whether the current message should be appended to one existing block or start a new block.\n\n"
-            "Task:\n"
-            "Read the current message, recent messages, and candidate blocks.\n"
-            "Structure the session into core narrative blocks that would become meaningful sections in a technical blog post or dev retrospective.\n"
-            "Do not create one block per message. A block should represent one coherent story unit: one problem, one investigation thread, one design decision, one implementation chunk, one deployment issue, one testing insight, or one lesson learned.\n"
-            "Choose APPEND when the current message helps develop the same story unit as one candidate block.\n"
-            "Choose NEW_BLOCK when the message starts a different story unit that would deserve its own paragraph or section in a blog post.\n\n"
-            "Positive rules:\n"
-            "1. Prefer coherent story-level grouping. A long session can contain several blocks, but each block should cover one blog-worthy unit rather than one utterance.\n"
-            "2. Use APPEND when the message belongs to the same problem-solving arc, same investigation thread, same design discussion, same implementation effort, same deployment/debugging episode, same testing analysis, or same retrospective insight.\n"
-            "3. Messages that are clarification, follow-up, command output, error log inspection, intermediate hypothesis, small correction, or next debugging step for the same arc should usually be APPEND.\n"
-            "4. Use NEW_BLOCK when the message starts a different story unit, even if the overall project is the same.\n"
-            "5. A good block should be something you could later title in a blog post, such as 'Why login returned 500 locally', 'Fixing CORS for the deployed frontend', 'Restructuring MCP prompt logic', or 'Tuning block granularity with 100-message tests'.\n"
-            "6. Treat changes like these as likely NEW_BLOCK signals: moving from one concrete issue to another unrelated one, or switching between clearly separate themes such as login 500 bug, CORS issue, nginx routing, README/docs, prompt tuning, threshold tuning, reconciliation design, model selection, deployment, or testing strategy.\n"
-            "7. Explicit transition cues such as '이제', '다른', '문서', '배포', 'nginx', 'CORS', 'README', 'prompt', 'threshold', 'reconciliation', 'model', 'llm', '테스트' can indicate a new block, but only when the concrete story unit has actually changed.\n"
-            "8. If the new message still advances the same immediate narrative, prefer APPEND.\n"
-            "9. If the message is ambiguous, prefer the most coherent ongoing story unit instead of reflexively creating a new block.\n"
-            "10. topic should be a short concrete phrase representing the story-worthy work item, not a vague project-wide label.\n"
-            "11. summary should read like the one-sentence summary of that block for a future write-up.\n"
-            "12. You must classify the block phase accurately using blockType.\n"
-            "13. blockType means:\n"
-            "    - problem: recognizing or describing a bug, failure, symptom, or obstacle.\n"
-            "    - proposal: suggesting an approach, option, hypothesis, or plan before trying it.\n"
-            "    - trial: actively trying, changing, testing, checking, logging, or experimenting.\n"
-            "    - result: reporting what happened after a trial, including success, failure, or observed effect.\n"
-            "    - insight: extracting root cause, lesson learned, design conclusion, or general principle.\n"
-            "14. Distinguish carefully between these phases. For example, 'maybe nginx is stripping the prefix' is proposal, 'I changed proxy_pass and rebuilt' is trial, 'the 404 disappeared' is result, and 'the root cause was prefix stripping by the outer nginx' is insight.\n"
-            "15. status should also be accurate:\n"
-            "    - open: active unresolved problem.\n"
-            "    - neutral: ongoing exploration, proposal, or trial without final outcome yet.\n"
-            "    - failed: a result showing the attempt did not work or the issue remains.\n"
-            "    - success: a result showing the issue was resolved or the expected behavior appeared.\n"
-            "16. tags must be compact and only include fields that matter for the chosen block.\n"
-            "17. Tag guidance:\n"
-            "    - problem: use tags like problem, symptom, component, error_code if clear.\n"
-            "    - proposal: use tags like hypothesis, candidates, target, component.\n"
-            "    - trial: use tags like method, command, file, endpoint, component.\n"
-            "    - result: use tags like method, result, effect, status_change.\n"
-            "    - insight: use tags like root_cause, lesson, rule, architecture.\n"
-            "18. Do not output vague tags. Prefer one or two precise tags over many generic ones.\n\n"
-            "Negative rules:\n"
-            "1. Do not append just because the session already has an open block.\n"
-            "2. Do not append just because the message shares generic words like server, error, docker, devlog, devtalk, mcp, or login.\n"
-            "3. Do not collapse multiple distinct work items into one block.\n"
-            "4. Do not create a new block for every minor step, every shell command, or every short follow-up within the same task.\n"
-            "5. Do not choose APPEND unless you can point to one clearly matching candidate block.\n"
-            "6. If no candidate is a reasonable match, action must be NEW_BLOCK.\n\n"
-            "Output rules:\n"
-            "Return JSON only with keys action, targetBlockId, blockType, status, topic, summary, tags, score, reason.\n"
-            'action must be either "APPEND" or "NEW_BLOCK".\n'
-            "If action is APPEND, targetBlockId must be one of the candidate block IDs.\n"
-            "If action is NEW_BLOCK, targetBlockId must be null.\n"
-            "blockType must be one of problem, proposal, trial, result, insight.\n"
-            "status must be one of open, neutral, failed, success.\n"
-            "score must be between 0 and 1 and reflect confidence.\n"
-            "reason must be a short snake_case explanation.\n\n"
-            "Few-shot guidance:\n"
-            "Example 1: existing block is 'login 500 after local devlog startup', current message is 'CORS origin needs update for warurulab.site'. This should be NEW_BLOCK because it is a different operational issue.\n"
-            "Example 2: existing block is 'MCP 100-message test keeps appending to one block', current message is 'raise append threshold and update prompt'. This can be APPEND if the candidate block is already about the same prompt/threshold tuning work.\n"
-            "Example 3: existing block is 'README deployment guide update', current message is 'add nginx reverse proxy note'. This can be APPEND if the candidate block is the README/doc update block.\n\n"
-            "Example 4: existing block is 'prompt tuning for over-grouping', current message is 'the messages are now over-splitting, one block per message'. This should be APPEND because it is a follow-up observation in the same prompt-tuning thread.\n"
-            "Example 5: existing block is 'local devlog login 500 bug', current message is 'checked backend log and saw null pointer in auth service'. This should be APPEND because it is the same bug investigation.\n\n"
-            "Example 6: existing block is 'devlog login 500 bug investigation', current message is 'now let's update AGENT.md and deployment docs'. This should be NEW_BLOCK because documentation work is a separate blog section from the login bug.\n"
-            "Example 7: existing block is 'tuning MCP prompt granularity', current message is 'we should structure blocks around blog-post-worthy core sections'. This should be APPEND because it refines the same design direction for block granularity.\n\n"
-            "Example 8: message is '로컬에서 Devlog 서버를 띄웠는데 로그인 직후 500에러가 나요'. blockType should be problem, status should be open, and tags should center on the symptom and component.\n"
-            "Example 9: message is 'nginx가 prefix를 strip하는 것 같아요'. blockType should be proposal, because it is still a hypothesis.\n"
-            "Example 10: message is 'proxy_pass 뒤 슬래시를 제거하고 다시 빌드했어요'. blockType should be trial, because it is an active change.\n"
-            "Example 11: message is '404는 없어졌지만 CSS는 아직 깨져요'. blockType should be result with failed or neutral status depending on whether the attempted fix clearly failed or only partially helped.\n"
-            "Example 12: message is '원인은 outer nginx가 /devtalk prefix를 strip한 것이었어요'. blockType should be insight, because it states the root cause.\n\n"
-            "---\n"
-            "[input]\n"
-            f"{json.dumps(payload, ensure_ascii=False)}\n"
-            "---"
+        template = self._resolve_prompt_template(
+            file_env_name="MCP_NARRATIVE_PROMPT_FILE",
+            text_env_name="MCP_NARRATIVE_PROMPT_TEMPLATE",
+            default_template=DEFAULT_NARRATIVE_PROMPT_TEMPLATE,
         )
+        return template.replace("{{PAYLOAD_JSON}}", json.dumps(payload, ensure_ascii=False))
+
+    def _resolve_prompt_template(
+        self,
+        *,
+        file_env_name: str,
+        text_env_name: str,
+        default_template: str,
+    ) -> str:
+        file_path = os.getenv(file_env_name, "").strip()
+        if file_path:
+            try:
+                loaded = self._read_prompt_file(file_path)
+                if loaded:
+                    return loaded
+            except OSError:
+                pass
+
+        inline_template = os.getenv(text_env_name, "")
+        if inline_template.strip():
+            return inline_template
+
+        return default_template
+
+    def _read_prompt_file(self, file_path: str) -> str:
+        path = Path(file_path)
+        return path.read_text(encoding="utf-8").strip()
 
     def _generate(self, prompt: str, format_schema: Optional[Dict[str, Any]] = None) -> str:
         payload = {
@@ -443,13 +465,13 @@ class LlmClient:
 
     def _infer_block_type(self, current_message: Mapping[str, Any]) -> str:
         content = self._stringify(current_message.get("content")).lower()
-        if any(keyword in content for keyword in ("solution", "fix", "resolved", "해결", "수정", "조치")):
+        if any(keyword in content for keyword in ("solution", "fix", "resolved", "solved", "worked", "success")):
             return "result"
-        if any(keyword in content for keyword in ("try", "attempt", "test", "시도", "테스트", "확인", "변경")):
+        if any(keyword in content for keyword in ("try", "attempt", "test", "check", "change", "update", "debug")):
             return "trial"
-        if any(keyword in content for keyword in ("because", "root cause", "원인", "insight", "결국")):
+        if any(keyword in content for keyword in ("because", "root cause", "insight", "lesson", "therefore")):
             return "insight"
-        if any(keyword in content for keyword in ("maybe", "suggest", "proposal", "제안", "추천")):
+        if any(keyword in content for keyword in ("maybe", "suggest", "proposal", "plan", "should", "could")):
             return "proposal"
         return "problem"
 
