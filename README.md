@@ -1,161 +1,149 @@
-# MCP Server — 대화 메시지를 구조화된 블록으로
+﻿# MCP Server ?????硫붿떆吏瑜?援ъ“?붾맂 釉붾줉?쇰줈
 
-> **"로그를 글로 만들기 위해선, 먼저 의미 단위로 나눠야 한다"**
+> **"濡쒓렇瑜?湲濡?留뚮뱾湲??꾪빐?? 癒쇱? ?섎? ?⑥쐞濡??섎닠???쒕떎"**
 >
-> 대화 메시지 묶음을 입력받아, 의미상 이어지는 메시지들을 `session block` 단위로 재구성하고
-> 각 블록에 요약 정보와 코드 스니펫을 붙여 반환하는 MCP 서버입니다.
+> ???硫붿떆吏 臾띠쓬???낅젰諛쏆븘, ?섎????댁뼱吏??硫붿떆吏?ㅼ쓣 `session block` ?⑥쐞濡??ш뎄?깊븯怨?> 媛?釉붾줉???붿빟 ?뺣낫? 肄붾뱶 ?ㅻ땲?レ쓣 遺숈뿬 諛섑솚?섎뒗 MCP ?쒕쾭?낅땲??
 
 <br/>
 
-## 개발 방식
+## 媛쒕컻 諛⑹떇
 
-> **설계는 직접, 코드는 AI에게**
+> **?ㅺ퀎??吏곸젒, 肄붾뱶??AI?먭쾶**
 
-저는 Spring Boot · Java가 주력이고 Python에 익숙하지 않습니다. 그래서 이 서버는 설계와 코드 작성 역할을 분리하는 방식으로 개발했습니다.
+???Spring Boot 쨌 Java媛 二쇰젰?닿퀬 Python???듭닕?섏? ?딆뒿?덈떎. 洹몃옒?????쒕쾭???ㅺ퀎? 肄붾뱶 ?묒꽦 ??븷??遺꾨━?섎뒗 諛⑹떇?쇰줈 媛쒕컻?덉뒿?덈떎.
 
-| 역할      |   담당    | 내용                                                        |
+| ??븷      |   ?대떦    | ?댁슜                                                        |
 | :-------- | :-------: | :---------------------------------------------------------- |
-| 설계 결정 | 직접 + AI | `plan.md`에 구조, block 의미, 예외 처리 방식을 정리 후 검토 |
-| 코드 작성 |    AI     | 결정된 설계를 바탕으로 Python 코드 생성                     |
-| 검증      |   직접    | 실제로 실행하고 테스트하며 결과 확인                        |
+| ?ㅺ퀎 寃곗젙 | 吏곸젒 + AI | `plan.md`??援ъ“, block ?섎?, ?덉쇅 泥섎━ 諛⑹떇???뺣━ ??寃??|
+| 肄붾뱶 ?묒꽦 |    AI     | 寃곗젙???ㅺ퀎瑜?諛뷀깢?쇰줈 Python 肄붾뱶 ?앹꽦                     |
+| 寃利?     |   吏곸젒    | ?ㅼ젣濡??ㅽ뻾?섍퀬 ?뚯뒪?명븯硫?寃곌낵 ?뺤씤                        |
 
-**이렇게 한 이유**: Python 문법 자체보다 어떤 구조의 서버를 왜 만드는지가 더 중요했습니다. 단순히 코드를 받아 붙여넣는 것이 아니라, block의 의미와 제품 흐름을 먼저 정하고 그에 맞는 구현을 검증하는 방식을 택했습니다.
+**?대젃寃????댁쑀**: Python 臾몃쾿 ?먯껜蹂대떎 ?대뼡 援ъ“???쒕쾭瑜???留뚮뱶?붿?媛 ??以묒슂?덉뒿?덈떎. ?⑥닚??肄붾뱶瑜?諛쏆븘 遺숈뿬?ｋ뒗 寃껋씠 ?꾨땲?? block???섎?? ?쒗뭹 ?먮쫫??癒쇱? ?뺥븯怨?洹몄뿉 留욌뒗 援ы쁽??寃利앺븯??諛⑹떇???앺뻽?듬땲??
 
 ---
 
 <br/>
 
-## WarruruLab 전체 파이프라인
+## WarruruLab ?꾩껜 ?뚯씠?꾨씪??
+> MCP Server??**WarruruLab**????踰덉㎏ ?쒕퉬?ㅼ엯?덈떎.
 
-> MCP Server는 **WarruruLab**의 두 번째 서비스입니다.
-
-|          |        개발톡(DevTalk)        |            MCP Server             |       개발로그(DevLog)        |
+|          |        媛쒕컻??DevTalk)        |            MCP Server             |       媛쒕컻濡쒓렇(DevLog)        |
 | :------: | :---------------------------: | :-------------------------------: | :---------------------------: |
-| **역할** | AI 대화로 문제 해결 로그 생성 | 메시지를 의미 단위 block으로 분류 | block 선택 → 블로그 초안 생성 |
-| **기술** |     Spring Boot · Java 21     |     FastAPI · Python · Ollama     |     Spring Boot · Java 21     |
-| **출력** |    Session · Message 저장     |           session_block           |        블로그 글 초안         |
+| **??븷** | AI ??붾줈 臾몄젣 ?닿껐 濡쒓렇 ?앹꽦 | 硫붿떆吏瑜??섎? ?⑥쐞 block?쇰줈 遺꾨쪟 | block ?좏깮 ??釉붾줈洹?珥덉븞 ?앹꽦 |
+| **湲곗닠** |     Spring Boot 쨌 Java 21     |     FastAPI 쨌 Python 쨌 Ollama     |     Spring Boot 쨌 Java 21     |
+| **異쒕젰** |    Session 쨌 Message ???    |           session_block           |        釉붾줈洹?湲 珥덉븞         |
 
-서비스 간 호출은 개발로그(DevLog)가 주도하며, MCP Server는 요청이 오면 분석 결과를 반환하는 역할입니다.
+?쒕퉬??媛??몄텧? 媛쒕컻濡쒓렇(DevLog)媛 二쇰룄?섎ŉ, MCP Server???붿껌???ㅻ㈃ 遺꾩꽍 寃곌낵瑜?諛섑솚?섎뒗 ??븷?낅땲??
 
 ```
-[Step 2] 블록 분류                               구현 방향 전환 중
-DevLog ──── REST ────▶ MCP Server
-            메시지 전달 → session_block 반환
+[Step 2] 釉붾줉 遺꾨쪟                               援ы쁽 諛⑺뼢 ?꾪솚 以?DevLog ???? REST ??????MCP Server
+            硫붿떆吏 ?꾨떖 ??session_block 諛섑솚
 ```
 
-연관 레포: [개발톡(DevTalk)](https://github.com/WarruruLab/DevTalk) · [개발로그(DevLog)](https://github.com/WarruruLab/DevLog)
+?곌? ?덊룷: [媛쒕컻??DevTalk)](https://github.com/WarruruLab/DevTalk) 쨌 [媛쒕컻濡쒓렇(DevLog)](https://github.com/WarruruLab/DevLog)
 
 ---
 
 <br/>
 
-## 현재 구현 상태
+## ?꾩옱 援ы쁽 ?곹깭
 
-**narrative block 구조로 전환 중**
+**narrative block 援ъ“濡??꾪솚 以?*
 
-현재 기준에서 MCP Server의 목표는 **사용자가 직접 조립 가능한 서사 단위 block**을 만드는 것입니다.
+?꾩옱 湲곗??먯꽌 MCP Server??紐⑺몴??**?ъ슜?먭? 吏곸젒 議곕┰ 媛?ν븳 ?쒖궗 ?⑥쐞 block**??留뚮뱶??寃껋엯?덈떎.
 
-예를 들어 하나의 이슈는 아래처럼 여러 block으로 쪼개집니다.
+?덈? ?ㅼ뼱 ?섎굹???댁뒋???꾨옒泥섎읆 ?щ윭 block?쇰줈 履쇨컻吏묐땲??
 
-- 문제 A 발견
-- 방법 B, C, D 제안
-- 방법 B 시도
-- 방법 B 실패
-- 방법 C 시도
-- 방법 C 실패
-- 방법 D 시도
-- 방법 D 성공
+- 臾몄젣 A 諛쒓껄
+- 諛⑸쾿 B, C, D ?쒖븞
+- 諛⑸쾿 B ?쒕룄
+- 諛⑸쾿 B ?ㅽ뙣
+- 諛⑸쾿 C ?쒕룄
+- 諛⑸쾿 C ?ㅽ뙣
+- 諛⑸쾿 D ?쒕룄
+- 諛⑸쾿 D ?깃났
 
-이 구조를 쓰면 DevLog에서 사용자가 원하는 흐름만 선택할 수 있습니다.
+??援ъ“瑜??곕㈃ DevLog?먯꽌 ?ъ슜?먭? ?먰븯???먮쫫留??좏깮?????덉뒿?덈떎.
 
-- 실패 과정 없이 쓰고 싶으면 실패 block 제외
-- 해결 과정만 강조하고 싶으면 성공 block만 선택
-- 시행착오를 보여주고 싶으면 trial / failed block 포함
+- ?ㅽ뙣 怨쇱젙 ?놁씠 ?곌퀬 ?띠쑝硫??ㅽ뙣 block ?쒖쇅
+- ?닿껐 怨쇱젙留?媛뺤“?섍퀬 ?띠쑝硫??깃났 block留??좏깮
+- ?쒗뻾李⑹삤瑜?蹂댁뿬二쇨퀬 ?띠쑝硫?trial / failed block ?ы븿
 
-즉 MCP Server의 목표는 "한 덩어리 요약"이 아니라, **편집 가능한 narrative block을 만드는 것**입니다.
+利?MCP Server??紐⑺몴??"???⑹뼱由??붿빟"???꾨땲?? **?몄쭛 媛?ν븳 narrative block??留뚮뱶??寃?*?낅땲??
 
-현재는 block 의미, block 타입, DB 구조, DevLog와의 연결 방식을 narrative 기준으로 다시 정리하고 있습니다. 핵심은 block 하나가 모든 정보를 다 가지는 것이 아니라, **문제 / 제안 / 시도 / 결과 / 인사이트 중 하나의 역할만 가지도록 설계하는 것**입니다.
+?꾩옱??block ?섎?, block ??? DB 援ъ“, DevLog????곌껐 諛⑹떇??narrative 湲곗??쇰줈 ?ㅼ떆 ?뺣━?섍퀬 ?덉뒿?덈떎. ?듭떖? block ?섎굹媛 紐⑤뱺 ?뺣낫瑜???媛吏??寃껋씠 ?꾨땲?? **臾몄젣 / ?쒖븞 / ?쒕룄 / 寃곌낵 / ?몄궗?댄듃 以??섎굹????븷留?媛吏?꾨줉 ?ㅺ퀎?섎뒗 寃?*?낅땲??
 
-| 항목                           |   상태    | 설명                                                 |
+| ??ぉ                           |   ?곹깭    | ?ㅻ챸                                                 |
 | :----------------------------- | :-------: | :--------------------------------------------------- |
-| narrative block 의미 정의      |  ✅ 완료  | 문서와 설계 기준 정리 완료                           |
-| block type / status 설계       |  ✅ 완료  | `problem / proposal / trial / result / insight` 기준 |
-| MySQL 테이블 전환안            |  ✅ 완료  | narrative block 기준 SQL 파일 작성                   |
-| README / plan / 개발 문서 정리 |  ✅ 완료  | narrative 구조 기준으로 정리                         |
-| `ingest-message` API           |  ✅ 완료  | candidate block 기반 실시간 입력 경로 추가           |
-| local LLM block classifier     |  ✅ 완료  | 기존 block 선택 또는 새 block 생성 판단 가능         |
-| active block 상태 반영 로직    |  ✅ 완료  | LLM 결정값을 block state에 반영 가능                 |
-| 예외 복구 / reconciliation     | ❌ 미완료 | 실패 메시지 재처리와 누락 메시지 복구는 다음 단계    |
+| narrative block ?섎? ?뺤쓽      |  ???꾨즺  | 臾몄꽌? ?ㅺ퀎 湲곗? ?뺣━ ?꾨즺                           |
+| block type / status ?ㅺ퀎       |  ???꾨즺  | `problem / proposal / trial / result / insight` 湲곗? |
+| MySQL ?뚯씠釉??꾪솚??           |  ???꾨즺  | narrative block 湲곗? SQL ?뚯씪 ?묒꽦                   |
+| README / plan / 媛쒕컻 臾몄꽌 ?뺣━ |  ???꾨즺  | narrative 援ъ“ 湲곗??쇰줈 ?뺣━                         |
+| `ingest-message` API           |  ???꾨즺  | candidate block 湲곕컲 ?ㅼ떆媛??낅젰 寃쎈줈 異붽?           |
+| local LLM block classifier     |  ???꾨즺  | 湲곗〈 block ?좏깮 ?먮뒗 ??block ?앹꽦 ?먮떒 媛??        |
+| active block ?곹깭 諛섏쁺 濡쒖쭅    |  ???꾨즺  | LLM 寃곗젙媛믪쓣 block state??諛섏쁺 媛??                |
+| ?덉쇅 蹂듦뎄 / reconciliation     | ??誘몄셿猷?| ?ㅽ뙣 硫붿떆吏 ?ъ쿂由ъ? ?꾨씫 硫붿떆吏 蹂듦뎄???ㅼ쓬 ?④퀎    |
 
 <br/>
 
-## 기술 스택
+## 湲곗닠 ?ㅽ깮
 
-| 영역    | 기술                       | 선택 이유                                           |
+| ?곸뿭    | 湲곗닠                       | ?좏깮 ?댁쑀                                           |
 | :------ | :------------------------- | :-------------------------------------------------- |
-| Server  | FastAPI · Python · uvicorn | MCP · AI 생태계 라이브러리가 Python에 집중되어 있음 |
-| LLM     | Ollama (`qwen2.5:3b`)      | 외부 API 없이 로컬에서 실행 가능                    |
-| 검증    | Pydantic                   | 요청 · 응답 스키마 강제                             |
-| 배포    | Ubuntu · systemd           | 개인 서버에 상시 운영                               |
-| 테스트  | unittest                   | 핵심 로직 단위 테스트                               |
-| DB 방향 | MySQL                      | DevLog 테이블과 바로 맞물려 운영 예정               |
+| Server  | FastAPI 쨌 Python 쨌 uvicorn | MCP 쨌 AI ?앺깭怨??쇱씠釉뚮윭由ш? Python??吏묒쨷?섏뼱 ?덉쓬 |
+| LLM     | Ollama (`qwen2.5:3b`)      | ?몃? API ?놁씠 濡쒖뺄?먯꽌 ?ㅽ뻾 媛??                   |
+| 寃利?   | Pydantic                   | ?붿껌 쨌 ?묐떟 ?ㅽ궎留?媛뺤젣                             |
+| 諛고룷    | Ubuntu 쨌 systemd           | 媛쒖씤 ?쒕쾭???곸떆 ?댁쁺                               |
+| ?뚯뒪?? | unittest                   | ?듭떖 濡쒖쭅 ?⑥쐞 ?뚯뒪??                              |
+| DB 諛⑺뼢 | MySQL                      | DevLog ?뚯씠釉붽낵 諛붾줈 留욌Ъ???댁쁺 ?덉젙               |
 
 <br/>
 
-## 아키텍처
+## ?꾪궎?띿쿂
 
-### 목표 구조
+### 紐⑺몴 援ъ“
 
 ```
-새 메시지 1개 입력 (POST /v1/session-blocks:ingest-message)
-  ↓
-현재 active block / 최근 문맥 / block 후보 조회
-  ↓
-local LLM이 기존 block 후보 중 어울리는 block을 선택
-  ├── 적합한 block이 있으면 해당 block append
-  └── 적합한 block이 없으면 새 block 생성
-  ↓
-선정된 block의 narrative 역할과 상태 갱신
-  ↓
-DevLog가 block을 선택해 글 흐름 구성
+??硫붿떆吏 1媛??낅젰 (POST /v1/session-blocks:ingest-message)
+  ???꾩옱 active block / 理쒓렐 臾몃㎘ / block ?꾨낫 議고쉶
+  ??local LLM??湲곗〈 block ?꾨낫 以??댁슱由щ뒗 block???좏깮
+  ?쒋?? ?곹빀??block???덉쑝硫??대떦 block append
+  ?붴?? ?곹빀??block???놁쑝硫???block ?앹꽦
+  ???좎젙??block??narrative ??븷怨??곹깭 媛깆떊
+  ??DevLog媛 block???좏깮??湲 ?먮쫫 援ъ꽦
 ```
 
-### 기존 태그 구조와 변경 방향
+### 湲곗〈 ?쒓렇 援ъ“? 蹂寃?諛⑺뼢
 
-기존에는 block 하나에 아래 5-tag를 모두 넣는 구조를 사용했습니다.
+湲곗〈?먮뒗 block ?섎굹???꾨옒 5-tag瑜?紐⑤몢 ?ｋ뒗 援ъ“瑜??ъ슜?덉뒿?덈떎.
 
-| 태그       | 의미               | 기존 방식            |
+| ?쒓렇       | ?섎?               | 湲곗〈 諛⑹떇            |
 | :--------- | :----------------- | :------------------- |
-| `CONTEXT`  | 어떤 작업 흐름인지 | 첫 문장 기반 추출    |
-| `PROBLEM`  | 핵심 문제          | 키워드 문장 추출     |
-| `TRIAL`    | 시도한 내용        | 키워드 문장 최대 3개 |
-| `SOLUTION` | 해결 방법          | 키워드 문장 추출     |
-| `INSIGHT`  | 인사이트           | 키워드 문장 추출     |
+| `CONTEXT`  | ?대뼡 ?묒뾽 ?먮쫫?몄? | 泥?臾몄옣 湲곕컲 異붿텧    |
+| `PROBLEM`  | ?듭떖 臾몄젣          | ?ㅼ썙??臾몄옣 異붿텧     |
+| `TRIAL`    | ?쒕룄???댁슜        | ?ㅼ썙??臾몄옣 理쒕? 3媛?|
+| `SOLUTION` | ?닿껐 諛⑸쾿          | ?ㅼ썙??臾몄옣 異붿텧     |
+| `INSIGHT`  | ?몄궗?댄듃           | ?ㅼ썙??臾몄옣 異붿텧     |
 
-하지만 narrative block 구조에서는 block 하나가 모든 태그를 다 갖지 않습니다.
+?섏?留?narrative block 援ъ“?먯꽌??block ?섎굹媛 紐⑤뱺 ?쒓렇瑜???媛뽰? ?딆뒿?덈떎.
 
-예를 들어:
+?덈? ?ㅼ뼱:
 
-- `problem` block: 문제 설명만 가짐
-- `proposal` block: 후보 해결책 목록만 가짐
-- `trial` block: 특정 방법 시도만 가짐
-- `result` block: 성공 또는 실패 결과만 가짐
-- `insight` block: 원인과 교훈만 가짐
+- `problem` block: 臾몄젣 ?ㅻ챸留?媛吏?- `proposal` block: ?꾨낫 ?닿껐梨?紐⑸줉留?媛吏?- `trial` block: ?뱀젙 諛⑸쾿 ?쒕룄留?媛吏?- `result` block: ?깃났 ?먮뒗 ?ㅽ뙣 寃곌낵留?媛吏?- `insight` block: ?먯씤怨?援먰썕留?媛吏?
+利?湲곗〈??5-tag 以묒떖 援ъ“ ??? `blockType + status + summary + partial tags` 援ъ“濡?諛붾앸땲??
 
-즉 기존의 5-tag 중심 구조 대신, `blockType + status + summary + partial tags` 구조로 바뀝니다.
-
-### 기존 block 출력 구조
+### 湲곗〈 block 異쒕젰 援ъ“
 
 ```json
 {
   "blockId": "blk_sess_123_1",
   "messageIds": ["msg_001", "msg_002", "msg_007"],
   "tags": {
-    "CONTEXT": "Redis 연결 설정 문제",
-    "PROBLEM": "API 서버 시작 시 Redis 연결 오류 발생",
-    "TRIAL": ["application.yml 수정 시도"],
-    "SOLUTION": "환경변수 누락이 원인",
-    "INSIGHT": "도커 네트워크 내부 hostname 사용 필요"
+    "CONTEXT": "Redis ?곌껐 ?ㅼ젙 臾몄젣",
+    "PROBLEM": "API ?쒕쾭 ?쒖옉 ??Redis ?곌껐 ?ㅻ쪟 諛쒖깮",
+    "TRIAL": ["application.yml ?섏젙 ?쒕룄"],
+    "SOLUTION": "?섍꼍蹂???꾨씫???먯씤",
+    "INSIGHT": "?꾩빱 ?ㅽ듃?뚰겕 ?대? hostname ?ъ슜 ?꾩슂"
   },
   "code_snippets": [
     {
@@ -168,7 +156,7 @@ DevLog가 block을 선택해 글 흐름 구성
 }
 ```
 
-### 목표 block 출력 구조
+### 紐⑺몴 block 異쒕젰 援ъ“
 
 ```json
 {
@@ -185,135 +173,98 @@ DevLog가 block을 선택해 글 흐름 구성
 }
 ```
 
-LLM은 새 메시지를 독립적으로만 보지 않고, 이미 생성된 block 후보들과 비교해 판단합니다. 즉 기준은 "직전 메시지와 비슷한가"보다 "현재 존재하는 어떤 narrative block에 속하는가"입니다. 어울리는 block이 없을 때만 새 block을 만듭니다.
+LLM? ??硫붿떆吏瑜??낅┰?곸쑝濡쒕쭔 蹂댁? ?딄퀬, ?대? ?앹꽦??block ?꾨낫?ㅺ낵 鍮꾧탳???먮떒?⑸땲?? 利?湲곗?? "吏곸쟾 硫붿떆吏? 鍮꾩듂?쒓?"蹂대떎 "?꾩옱 議댁옱?섎뒗 ?대뼡 narrative block???랁븯?붽?"?낅땲?? ?댁슱由щ뒗 block???놁쓣 ?뚮쭔 ??block??留뚮벊?덈떎.
 
-### 예외 처리 방향
+### ?덉쇅 泥섎━ 諛⑺뼢
 
-실시간 분류는 빠른 반영 경로이고, 실패 복구는 별도 경로로 분리할 예정이다.
+?ㅼ떆媛?遺꾨쪟??鍮좊Ⅸ 諛섏쁺 寃쎈줈?닿퀬, ?ㅽ뙣 蹂듦뎄??蹂꾨룄 寃쎈줈濡?遺꾨━???덉젙?대떎.
 
-예상 흐름:
+?덉긽 ?먮쫫:
 
-1. 새 메시지를 저장한다.
-2. MCP가 block 반영을 시도한다.
-3. 성공하면 해당 메시지를 `processed`로 본다.
-4. 실패하면 `failed` 또는 `reconcile_pending` 상태로 남긴다.
-5. 이후 reconciliation job이 세션 전체 메시지와 현재 block에 포함된 `messageIds`를 비교한다.
-6. block에 아직 포함되지 않은 `messageId`만 다시 routing 한다.
+1. ??硫붿떆吏瑜???ν븳??
+2. MCP媛 block 諛섏쁺???쒕룄?쒕떎.
+3. ?깃났?섎㈃ ?대떦 硫붿떆吏瑜?`processed`濡?蹂몃떎.
+4. ?ㅽ뙣?섎㈃ `failed` ?먮뒗 `reconcile_pending` ?곹깭濡??④릿??
+5. ?댄썑 reconciliation job???몄뀡 ?꾩껜 硫붿떆吏? ?꾩옱 block???ы븿??`messageIds`瑜?鍮꾧탳?쒕떎.
+6. block???꾩쭅 ?ы븿?섏? ?딆? `messageId`留??ㅼ떆 routing ?쒕떎.
 
-즉 업로드 실패, LLM timeout, DB 반영 실패 같은 경우에도 메시지를 버리지 않고, 나중에 **누락 메시지만 다시 block에 넣는 방식**으로 복구할 계획이다.
-
-<br/>
-
-## 장점과 한계
-
-**장점**
-
-- 사용자가 실패 과정 포함 여부를 직접 고를 수 있다
-- 하나의 이슈를 문제, 제안, 시도, 결과로 나눠 더 자연스럽게 편집할 수 있다
-- DevLog에서 원하는 흐름만 선택해 글을 구성할 수 있다
-- block 의미가 더 명확해진다
-- DB 구조와 API 방향을 서사 단위 중심으로 맞출 수 있다
-
-**한계**
-
-- 예외 복구 상태 모델은 아직 구현되지 않았다
-- retry / reconciliation batch가 아직 구현되지 않았다
-- DB persistence와 멱등 처리까지는 아직 연결되지 않았다
-- block 간 관계를 어떻게 유지할지 세부 정책이 더 필요하다
+利??낅줈???ㅽ뙣, LLM timeout, DB 諛섏쁺 ?ㅽ뙣 媛숈? 寃쎌슦?먮룄 硫붿떆吏瑜?踰꾨━吏 ?딄퀬, ?섏쨷??**?꾨씫 硫붿떆吏留??ㅼ떆 block???ｋ뒗 諛⑹떇**?쇰줈 蹂듦뎄??怨꾪쉷?대떎.
 
 <br/>
 
-## 프로젝트 구조
+## ?μ젏怨??쒓퀎
+
+**?μ젏**
+
+- ?ъ슜?먭? ?ㅽ뙣 怨쇱젙 ?ы븿 ?щ?瑜?吏곸젒 怨좊? ???덈떎
+- ?섎굹???댁뒋瑜?臾몄젣, ?쒖븞, ?쒕룄, 寃곌낵濡??섎닠 ???먯뿰?ㅻ읇寃??몄쭛?????덈떎
+- DevLog?먯꽌 ?먰븯???먮쫫留??좏깮??湲??援ъ꽦?????덈떎
+- block ?섎?媛 ??紐낇솗?댁쭊??- DB 援ъ“? API 諛⑺뼢???쒖궗 ?⑥쐞 以묒떖?쇰줈 留욎텧 ???덈떎
+
+**?쒓퀎**
+
+- ?덉쇅 蹂듦뎄 ?곹깭 紐⑤뜽? ?꾩쭅 援ы쁽?섏? ?딆븯??- retry / reconciliation batch媛 ?꾩쭅 援ы쁽?섏? ?딆븯??- DB persistence? 硫깅벑 泥섎━源뚯????꾩쭅 ?곌껐?섏? ?딆븯??- block 媛?愿怨꾨? ?대뼸寃??좎??좎? ?몃? ?뺤콉?????꾩슂?섎떎
+
+<br/>
+
+## ?꾨줈?앺듃 援ъ“
 
 ```
 mcp/
-├── src/devlog_mcp_server/
-│   ├── main.py              # FastAPI 앱 · 엔드포인트
-│   ├── models.py            # Request · Response DTO (Pydantic)
-│   ├── core/
-│   │   ├── builder.py       # 기존 block 생성 로직
-│   │   ├── decision.py      # 기존 block 판정 로직
-│   │   └── summarize.py     # 기존 tags · 코드 스니펫 추출
-│   ├── llm/
-│   │   └── client.py        # Ollama 호출 · 분류기 전환 예정
-│   └── utils/
-│       └── validate.py      # 입력 검증 · role 정규화
-│
-├── tests/
-│   └── test_builder.py      # 기존 block 생성 테스트
-│
-├── examples/
-│   ├── full_build_request.json
-│   ├── incremental_build_request.json
-│   └── ollama_ambiguous_request.json
-│
-├── deploy/
-│   ├── mcp.service
-│   ├── setup_ubuntu.sh
-│   └── check_ubuntu.sh
-│
-├── sql/
-│   └── 001_mysql_migrate_session_blocks_to_narrative_blocks.sql
-│
-├── .env.example
-├── plan.md
-└── requirements.txt
+├── backend/
+│   ├── src/devlog_mcp_server/
+│   ├── tests/
+│   ├── examples/
+│   ├── .env.example
+│   └── requirements.txt
+├── docs/
+├── infra/
+├── README.md
+└── ubuntu_server_guide.md
 ```
+
 
 <br/>
 
 ## 실행
 
 ### 사전 준비
-
 - Python 3.8+
-- Ollama 설치 후 모델 준비
-
+- Ollama 설치 및 모델 준비
 ```bash
 ollama pull qwen2.5:3b
 ```
 
 ### 서버 실행
-
 ```bash
 python3 -m venv .venv
 source .venv/bin/activate
-pip install -r requirements.txt
-uvicorn devlog_mcp_server.main:app --app-dir src --host 0.0.0.0 --port 8000
+pip install -r backend/requirements.txt
+uvicorn devlog_mcp_server.main:app --app-dir backend/src --host 0.0.0.0 --port 8000
 ```
 
 ### 테스트
-
 ```bash
-PYTHONPATH=src .venv/bin/python -m unittest discover -s tests -v
+PYTHONPATH=backend/src .venv/bin/python -m unittest discover -s backend/tests -v
 ```
 
-### Ubuntu 서버 배포
-
-```bash
-chmod +x deploy/setup_ubuntu.sh deploy/check_ubuntu.sh
-./deploy/setup_ubuntu.sh /opt/mcp mcp
-MCP_BASE_URL=http://127.0.0.1:8000 ./deploy/check_ubuntu.sh
-```
-
-### 환경변수
-
-| 변수명                      | 설명                             | 기본값                                           |
+### ?섍꼍蹂??
+| 蹂?섎챸                      | ?ㅻ챸                             | 湲곕낯媛?                                          |
 | :-------------------------- | :------------------------------- | :----------------------------------------------- |
-| `OLLAMA_BASE_URL`           | Ollama 서버 주소                 | `http://ollama:11434`                            |
-| `OLLAMA_MODEL`              | 사용할 모델명                    | `qwen2.5:3b`                                     |
-| `OLLAMA_TIMEOUT_SECONDS`    | Ollama 응답 제한 시간            | `10`                                             |
-| `DEVLOG_BASE_URL`           | DevLog 백엔드 주소               | `http://devlog-backend:8081`                     |
-| `DEVLOG_INTERNAL_API_KEY`   | DevLog 내부 API 키               | ``                                               |
-| `DEVLOG_TIMEOUT_SECONDS`    | DevLog 응답 제한 시간            | `10`                                             |
-| `MCP_CORS_ALLOW_ORIGINS`    | MCP 직접 호출 허용 origin 목록   | ``                                               |
-| `RUN_LOCAL_LLM_TEST`        | 100개 더미 데이터 통합 검증 여부 | `0`                                              |
-| `MCP_BASE_URL`              | 통합 검증용 MCP 주소             | `http://mcp:8000`                                |
-| `LOCAL_LLM_SMOKE_COUNT`     | 통합 검증 처리 메시지 수         | `100`                                            |
-| `LOCAL_LLM_RECENT_LIMIT`    | recentMessages 최대 개수         | `8`                                              |
-| `LOCAL_LLM_CANDIDATE_LIMIT` | candidateBlocks 최대 개수        | `8`                                              |
-| `LOCAL_LLM_HTTP_TIMEOUT`    | 통합 검증 HTTP 제한 시간         | `120`                                            |
-| `LOCAL_LLM_REPORT_PATH`     | 통합 검증 리포트 경로            | `artifacts/realtime_dummy_local_llm_report.json` |
+| `OLLAMA_BASE_URL`           | Ollama ?쒕쾭 二쇱냼                 | `http://ollama:11434`                            |
+| `OLLAMA_MODEL`              | ?ъ슜??紐⑤뜽紐?                   | `qwen2.5:3b`                                     |
+| `OLLAMA_TIMEOUT_SECONDS`    | Ollama ?묐떟 ?쒗븳 ?쒓컙            | `10`                                             |
+| `DEVLOG_BASE_URL`           | DevLog 諛깆뿏??二쇱냼               | `http://devlog-backend:8081`                     |
+| `DEVLOG_INTERNAL_API_KEY`   | DevLog ?대? API ??              | ``                                               |
+| `DEVLOG_TIMEOUT_SECONDS`    | DevLog ?묐떟 ?쒗븳 ?쒓컙            | `10`                                             |
+| `MCP_CORS_ALLOW_ORIGINS`    | MCP 吏곸젒 ?몄텧 ?덉슜 origin 紐⑸줉   | ``                                               |
+| `RUN_LOCAL_LLM_TEST`        | 100媛??붾? ?곗씠???듯빀 寃利??щ? | `0`                                              |
+| `MCP_BASE_URL`              | ?듯빀 寃利앹슜 MCP 二쇱냼             | `http://mcp:8000`                                |
+| `LOCAL_LLM_SMOKE_COUNT`     | ?듯빀 寃利?泥섎━ 硫붿떆吏 ??        | `100`                                            |
+| `LOCAL_LLM_RECENT_LIMIT`    | recentMessages 理쒕? 媛쒖닔         | `8`                                              |
+| `LOCAL_LLM_CANDIDATE_LIMIT` | candidateBlocks 理쒕? 媛쒖닔        | `8`                                              |
+| `LOCAL_LLM_HTTP_TIMEOUT`    | ?듯빀 寃利?HTTP ?쒗븳 ?쒓컙         | `120`                                            |
+| `LOCAL_LLM_REPORT_PATH`     | ?듯빀 寃利?由ы룷??寃쎈줈            | `artifacts/realtime_dummy_local_llm_report.json` |
 
-> 현재 Ollama는 local LLM 연동 경로의 기준 모델입니다.
-> 이후 narrative block 구조가 코드에 반영되면, 메시지 단위 block 분류기로 사용될 예정입니다.
+> ?꾩옱 Ollama??local LLM ?곕룞 寃쎈줈??湲곗? 紐⑤뜽?낅땲??
+> ?댄썑 narrative block 援ъ“媛 肄붾뱶??諛섏쁺?섎㈃, 硫붿떆吏 ?⑥쐞 block 遺꾨쪟湲곕줈 ?ъ슜???덉젙?낅땲??
