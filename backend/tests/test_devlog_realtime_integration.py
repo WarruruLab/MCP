@@ -18,25 +18,32 @@ from devlog_mcp_server.output.devlog_client import DevLogRequestError
 
 class FakeLlmClient:
     def __init__(self, action: str, target_block_id: str | None, block_type: str = "trial") -> None:
-        self.model = "fake-model"
+        self.model = "fake-metadata-model"
         self.action = action
         self.target_block_id = target_block_id
         self.block_type = block_type
 
-    def classify_narrative_block(self, **_: object):
+    def classify_narrative_route(self, **_: object):
         class Decision:
             pass
 
         decision = Decision()
         decision.action = self.action
         decision.target_block_id = self.target_block_id
+        decision.score = 0.91
+        decision.reason = "same_attempt_continues"
+        return decision
+
+    def classify_narrative_metadata(self, **_: object):
+        class Decision:
+            pass
+
+        decision = Decision()
         decision.block_type = self.block_type
         decision.status = "neutral"
         decision.topic = "Redis timeout issue"
         decision.summary = "Adjusted timeout handling."
         decision.tags = {"method": "adjust timeout"}
-        decision.score = 0.91
-        decision.reason = "same_attempt_continues"
         return decision
 
 

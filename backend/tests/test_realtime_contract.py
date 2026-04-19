@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import unittest
-from typing import Any, Dict
 
 from devlog_mcp_server.llm.client import LlmClient
 from devlog_mcp_server.models import (
@@ -46,7 +45,7 @@ class RealtimeNarrativeContractTests(unittest.TestCase):
     def test_ingest_request_dto_accepts_candidate_blocks(self) -> None:
         request = IngestMessageRequestDTO(
             sessionId="sess_1",
-            currentMessage=_make_message("msg_10", "timeout 값을 늘려볼까요?"),
+            currentMessage=_make_message("msg_10", "Should we increase the timeout?"),
             candidateBlocks=[
                 _make_candidate_block(
                     "blk_1",
@@ -55,7 +54,7 @@ class RealtimeNarrativeContractTests(unittest.TestCase):
                     "Tried increasing timeout.",
                 )
             ],
-            recentMessages=[_make_message("msg_9", "timeout 설정을 확인해보자")],
+            recentMessages=[_make_message("msg_9", "We are checking the timeout setting.")],
         )
 
         self.assertEqual("sess_1", request.sessionId)
@@ -88,16 +87,22 @@ class RealtimeNarrativeContractTests(unittest.TestCase):
         self.assertEqual("blk_1", response.block.blockId)
         self.assertEqual(["msg_1", "msg_10"], response.block.messageIds)
 
-    def test_classifier_can_append_to_existing_candidate_block(self) -> None:
+    def test_classifier_can_append_to_existing_candidate_block_with_separate_route_and_metadata(self) -> None:
         client = LlmClient(model="fake-model", base_url="http://127.0.0.1:11434", timeout_seconds=0.01)
         original_generate = client._generate
 
+        responses = iter(
+            [
+                '{"action":"APPEND","targetBlockId":"blk_1","score":0.93,"reason":"same_attempt_continues"}',
+                (
+                    '{"blockType":"trial","status":"neutral","topic":"Redis timeout issue",'
+                    '"summary":"Tried increasing timeout.","tags":{"method":"increase timeout"}}'
+                ),
+            ]
+        )
+
         def fake_generate(_: str) -> str:
-            return (
-                '{"action":"APPEND","targetBlockId":"blk_1","blockType":"trial","status":"neutral",'
-                '"topic":"Redis timeout issue","summary":"Tried increasing timeout and retried.",'
-                '"tags":{"method":"increase timeout"},"score":0.93,"reason":"same_attempt_continues"}'
-            )
+            return next(responses)
 
         try:
             client._generate = fake_generate  # type: ignore[method-assign]
@@ -105,7 +110,7 @@ class RealtimeNarrativeContractTests(unittest.TestCase):
                 current_message={
                     "messageId": "msg_10",
                     "role": "user",
-                    "content": "timeout 값을 늘려볼까요?",
+                    "content": "Should we increase the timeout and retry?",
                     "timestamp": "2026-04-01T10:00:00Z",
                 },
                 candidate_blocks=[
@@ -128,20 +133,29 @@ class RealtimeNarrativeContractTests(unittest.TestCase):
         self.assertEqual("blk_1", result.target_block_id)
         self.assertEqual("trial", result.block_type)
         self.assertEqual("neutral", result.status)
+        self.assertEqual("Redis timeout issue", result.topic)
+        self.assertEqual("Tried increasing timeout.", result.summary)
+        self.assertEqual({"method": "increase timeout"}, result.tags)
         self.assertEqual("same_attempt_continues", result.reason)
         self.assertGreaterEqual(result.score, 0.0)
         self.assertLessEqual(result.score, 1.0)
 
-    def test_classifier_can_create_new_block_when_no_candidate_fits(self) -> None:
+    def test_classifier_can_create_new_block_with_separate_route_and_metadata(self) -> None:
         client = LlmClient(model="fake-model", base_url="http://127.0.0.1:11434", timeout_seconds=0.01)
         original_generate = client._generate
 
+        responses = iter(
+            [
+                '{"action":"NEW_BLOCK","targetBlockId":null,"score":0.89,"reason":"new_narrative_step"}',
+                (
+                    '{"blockType":"result","status":"success","topic":"Timeout fix result",'
+                    '"summary":"The timeout increase resolved the issue.","tags":{"result":"resolved"}}'
+                ),
+            ]
+        )
+
         def fake_generate(_: str) -> str:
-            return (
-                '{"action":"NEW_BLOCK","targetBlockId":null,"blockType":"result","status":"success",'
-                '"topic":"Redis timeout issue","summary":"Timeout increase resolved the issue.",'
-                '"tags":{"method":"increase timeout","result":"success"},"score":0.89,"reason":"new_narrative_step"}'
-            )
+            return next(responses)
 
         try:
             client._generate = fake_generate  # type: ignore[method-assign]
@@ -149,7 +163,7 @@ class RealtimeNarrativeContractTests(unittest.TestCase):
                 current_message={
                     "messageId": "msg_11",
                     "role": "user",
-                    "content": "timeout 값을 올리니 해결됐어요",
+                    "content": "The timeout increase resolved the issue.",
                     "timestamp": "2026-04-01T10:01:00Z",
                 },
                 candidate_blocks=[],
@@ -164,8 +178,12 @@ class RealtimeNarrativeContractTests(unittest.TestCase):
         self.assertEqual("result", result.block_type)
         self.assertEqual("success", result.status)
         self.assertEqual("new_narrative_step", result.reason)
+        self.assertEqual(
+            "The timeout increase resolved the issue.",
+            result.summary,
+        )
 
-    def test_invalid_classifier_output_falls_back_to_new_block(self) -> None:
+    def test_invalid_route_output_falls_back_to_new_block_with_heuristics(self) -> None:
         client = LlmClient(model="fake-model", base_url="http://127.0.0.1:11434", timeout_seconds=0.01)
         original_generate = client._generate
 
@@ -178,7 +196,7 @@ class RealtimeNarrativeContractTests(unittest.TestCase):
                 current_message={
                     "messageId": "msg_12",
                     "role": "user",
-                    "content": "timeout 설정을 다시 확인해볼게요",
+                    "content": "Let's check the timeout again.",
                     "timestamp": "2026-04-01T10:02:00Z",
                 },
                 candidate_blocks=[
@@ -199,9 +217,91 @@ class RealtimeNarrativeContractTests(unittest.TestCase):
 
         self.assertEqual("NEW_BLOCK", result.action)
         self.assertIsNone(result.target_block_id)
-        self.assertEqual("fallback_conservative_new_block", result.reason)
         self.assertEqual("trial", result.block_type)
         self.assertEqual("neutral", result.status)
+        self.assertEqual("fallback_conservative_new_block", result.reason)
+
+    def test_metadata_failure_reuses_candidate_metadata_for_append(self) -> None:
+        client = LlmClient(model="fake-model", base_url="http://127.0.0.1:11434", timeout_seconds=0.01)
+        original_generate = client._generate
+
+        responses = iter(
+            [
+                '{"action":"APPEND","targetBlockId":"blk_2","score":0.87,"reason":"same_attempt_continues"}',
+                "not-json",
+            ]
+        )
+
+        def fake_generate(_: str) -> str:
+            return next(responses)
+
+        try:
+            client._generate = fake_generate  # type: ignore[method-assign]
+            result = client.classify_narrative_block(
+                current_message={
+                    "messageId": "msg_13",
+                    "role": "user",
+                    "content": "Let's retry the same timeout change once more.",
+                    "timestamp": "2026-04-01T10:03:00Z",
+                },
+                candidate_blocks=[
+                    {
+                        "blockId": "blk_2",
+                        "topic": "Redis timeout issue",
+                        "blockType": "trial",
+                        "status": "neutral",
+                        "summary": "Adjusted timeout handling.",
+                        "tags": {"method": "adjust timeout"},
+                    }
+                ],
+                recent_messages=[],
+                session_id="sess_1",
+            )
+        finally:
+            client._generate = original_generate  # type: ignore[method-assign]
+
+        self.assertEqual("APPEND", result.action)
+        self.assertEqual("blk_2", result.target_block_id)
+        self.assertEqual("trial", result.block_type)
+        self.assertEqual("neutral", result.status)
+        self.assertEqual("Redis timeout issue", result.topic)
+        self.assertEqual("Adjusted timeout handling.", result.summary)
+        self.assertEqual({"method": "adjust timeout"}, result.tags)
+
+    def test_metadata_failure_uses_heuristics_for_new_block(self) -> None:
+        client = LlmClient(model="fake-model", base_url="http://127.0.0.1:11434", timeout_seconds=0.01)
+        original_generate = client._generate
+
+        responses = iter(
+            [
+                '{"action":"NEW_BLOCK","targetBlockId":null,"score":0.82,"reason":"new_narrative_step"}',
+                "not-json",
+            ]
+        )
+
+        def fake_generate(_: str) -> str:
+            return next(responses)
+
+        try:
+            client._generate = fake_generate  # type: ignore[method-assign]
+            result = client.classify_narrative_block(
+                current_message={
+                    "messageId": "msg_14",
+                    "role": "user",
+                    "content": "Let's check the timeout again.",
+                    "timestamp": "2026-04-01T10:04:00Z",
+                },
+                candidate_blocks=[],
+                recent_messages=[],
+                session_id="sess_1",
+            )
+        finally:
+            client._generate = original_generate  # type: ignore[method-assign]
+
+        self.assertEqual("NEW_BLOCK", result.action)
+        self.assertEqual("trial", result.block_type)
+        self.assertEqual("neutral", result.status)
+        self.assertEqual("Let's check the timeout again.", result.summary)
 
 
 if __name__ == "__main__":

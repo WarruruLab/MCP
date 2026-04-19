@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 import json
 from typing import Any, Dict, List, Optional
+from urllib import error
 
 from devlog_mcp_server.core import decide_finalize_block
 from devlog_mcp_server.core.routing import apply_routing_decision
@@ -45,29 +46,18 @@ class RealtimeIngestService:
         candidate_block_payloads = self._build_candidate_block_payloads(request)
         current_message = self._model_dump(request.currentMessage)
         recent_messages = [self._model_dump(message) for message in request.recentMessages]
-
-        decision = self.llm_client.classify_narrative_block(
-            current_message=current_message,
-            candidate_blocks=candidate_block_payloads,
-            recent_messages=recent_messages,
+        final_decision = self._classify_decision(
             session_id=request.sessionId,
+            current_message=current_message,
+            candidate_block_payloads=candidate_block_payloads,
+            recent_messages=recent_messages,
         )
 
         routing_result = apply_routing_decision(
             session_id=request.sessionId,
             current_message=current_message,
             candidate_blocks=candidate_block_payloads,
-            decision={
-                "action": decision.action,
-                "targetBlockId": decision.target_block_id,
-                "blockType": decision.block_type,
-                "status": decision.status,
-                "topic": decision.topic,
-                "summary": decision.summary,
-                "tags": decision.tags,
-                "score": decision.score,
-                "reason": decision.reason,
-            },
+            decision=final_decision,
             tail_limit=request.options.maxRecentMessages,
         )
 
@@ -92,6 +82,67 @@ class RealtimeIngestService:
             reason=routing_result.decision.reason,
             devlog=devlog_result,
         )
+
+    def _classify_decision(
+        self,
+        *,
+        session_id: str,
+        current_message: Dict[str, Any],
+        candidate_block_payloads: List[Dict[str, Any]],
+        recent_messages: List[Dict[str, Any]],
+    ) -> Dict[str, Any]:
+        try:
+            route_decision = self.llm_client.classify_narrative_route(
+                current_message=current_message,
+                candidate_blocks=candidate_block_payloads,
+                recent_messages=recent_messages,
+                session_id=session_id,
+            )
+        except (ValueError, error.URLError, TimeoutError, OSError):
+            fallback = self.llm_client.classify_narrative_block(
+                current_message=current_message,
+                candidate_blocks=candidate_block_payloads,
+                recent_messages=recent_messages,
+                session_id=session_id,
+            )
+            return {
+                "action": fallback.action,
+                "targetBlockId": fallback.target_block_id,
+                "blockType": fallback.block_type,
+                "status": fallback.status,
+                "topic": fallback.topic,
+                "summary": fallback.summary,
+                "tags": fallback.tags,
+                "score": fallback.score,
+                "reason": fallback.reason,
+            }
+
+        try:
+            metadata_decision = self.llm_client.classify_narrative_metadata(
+                current_message=current_message,
+                candidate_blocks=candidate_block_payloads,
+                recent_messages=recent_messages,
+                session_id=session_id,
+                route_decision=route_decision,
+            )
+        except (ValueError, error.URLError, TimeoutError, OSError):
+            metadata_decision = self.llm_client.fallback_narrative_metadata(
+                current_message=current_message,
+                candidate_blocks=candidate_block_payloads,
+                route_decision=route_decision,
+            )
+
+        return {
+            "action": route_decision.action,
+            "targetBlockId": route_decision.target_block_id,
+            "blockType": metadata_decision.block_type,
+            "status": metadata_decision.status,
+            "topic": metadata_decision.topic,
+            "summary": metadata_decision.summary,
+            "tags": metadata_decision.tags,
+            "score": route_decision.score,
+            "reason": route_decision.reason,
+        }
 
     def _sync_devlog(
         self,

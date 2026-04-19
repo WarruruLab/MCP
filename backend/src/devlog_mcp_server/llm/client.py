@@ -16,6 +16,23 @@ class LlmDecision:
 
 
 @dataclass
+class NarrativeRouteDecision:
+    action: str
+    target_block_id: Optional[str]
+    score: float
+    reason: str
+
+
+@dataclass
+class NarrativeMetadataDecision:
+    block_type: str
+    status: str
+    topic: str
+    summary: str
+    tags: Dict[str, object]
+
+
+@dataclass
 class NarrativeBlockClassification:
     action: str
     target_block_id: Optional[str]
@@ -38,61 +55,44 @@ DEFAULT_APPEND_PROMPT_TEMPLATE = (
 )
 
 
-DEFAULT_NARRATIVE_PROMPT_TEMPLATE = (
-    "You are a narrative block router for a development work log.\n"
-    "Your first job is routing: decide whether the current message belongs to one existing candidate block or starts a new block.\n"
-    "A block is one coherent work unit, such as one bug investigation, one CORS issue, one doc update, one prompt-tuning discussion, one reconciliation design discussion, or one model-selection discussion.\n\n"
-    "Decision procedure:\n"
-    "1. Read currentMessage.\n"
-    "2. Compare it with each candidate block.\n"
-    "3. Choose APPEND only when one candidate clearly matches the same concrete work unit.\n"
-    "4. Choose NEW_BLOCK when the message starts a different concrete work unit.\n"
-    "5. Do not create one block per message.\n"
-    "6. Do not append only because the same project is being discussed.\n"
-    "7. Generic word overlap is not enough.\n"
-    "8. If uncertain, prefer NEW_BLOCK.\n\n"
-    "Strong APPEND signals:\n"
-    "- follow-up question in the same issue\n"
-    "- same bug, same design topic, same tuning thread\n"
-    "- same investigation or same fix attempt\n"
-    "- result or observation from the same trial\n\n"
-    "Strong NEW_BLOCK signals:\n"
-    "- switching from bug A to bug B\n"
-    "- switching from debugging to docs\n"
-    "- switching from prompt tuning to DB schema\n"
-    "- switching from CORS to model selection\n"
-    "- switching from reconciliation design to deployment\n\n"
-    "Metadata rules:\n"
-    "- After routing, fill blockType, status, topic, summary, and tags.\n"
-    "- Keep topic short and concrete.\n"
-    "- Keep summary to one sentence.\n"
-    "- Keep tags compact and specific.\n"
-    "- blockType must be one of problem, proposal, trial, result, insight.\n"
-    "- status must be one of open, neutral, failed, success.\n"
-    "- problem = bug, symptom, failure, obstacle.\n"
-    "- proposal = idea, option, hypothesis, plan.\n"
-    "- trial = trying, changing, testing, checking, logging.\n"
-    "- result = observed outcome after a trial.\n"
-    "- insight = root cause, lesson, or design conclusion.\n\n"
-    "Output rules:\n"
-    "Return JSON only with keys action, targetBlockId, blockType, status, topic, summary, tags, score, reason.\n"
-    'action must be either "APPEND" or "NEW_BLOCK".\n'
-    "If action is APPEND, targetBlockId must be one of the candidate block IDs.\n"
-    "If action is NEW_BLOCK, targetBlockId must be null.\n"
-    "score must be between 0 and 1.\n"
-    "reason must be a short snake_case string.\n"
-    "No extra text.\n\n"
-    "Examples:\n"
-    "- Existing block: 'login 500 after local startup'. Current message: 'checked backend log and saw null pointer in auth service'. Output should be APPEND.\n"
-    "- Existing block: 'login 500 after local startup'. Current message: 'CORS origin needs update for localhost frontend'. Output should be NEW_BLOCK.\n"
-    "- Existing block: 'README deployment guide update'. Current message: 'add nginx reverse proxy note'. Output should be APPEND.\n"
-    "- Existing block: 'prompt tuning for over-grouping'. Current message: 'now it over-splits, one block per message'. Output should be APPEND.\n"
-    "- Existing block: 'reconciliation design'. Current message: 'let us compare whole session messages with block_messages'. Output should be APPEND.\n"
-    "- Existing block: 'reconciliation design'. Current message: 'which llm model should we use for classification'. Output should be NEW_BLOCK.\n\n"
-    "---\n"
+DEFAULT_ROUTE_PROMPT_TEMPLATE = (
+    "You are a block router.\n\n"
+    "Task:\n"
+    "Decide APPEND or NEW_BLOCK for currentMessage.\n\n"
+    "Rule:\n"
+    "One block = one ongoing issue.\n"
+    "Do not create one block per message.\n"
+    "If currentMessage continues the same issue, choose APPEND.\n"
+    "If currentMessage starts a different issue, choose NEW_BLOCK.\n"
+    "If uncertain, choose APPEND.\n\n"
+    "Return JSON only:\n"
+    "action, targetBlockId, score, reason\n\n"
+    "Rules:\n"
+    "- action = APPEND or NEW_BLOCK\n"
+    "- if APPEND, targetBlockId must be one candidate block id\n"
+    "- if NEW_BLOCK, targetBlockId must be null\n"
+    "- score = 0 to 1\n"
+    "- reason = short snake_case\n\n"
     "[input]\n"
-    "{{PAYLOAD_JSON}}\n"
-    "---"
+    "{{PAYLOAD_JSON}}"
+)
+
+
+DEFAULT_METADATA_PROMPT_TEMPLATE = (
+    "You build narrative block metadata.\n\n"
+    "Task:\n"
+    "Use currentMessage and routeDecision to fill block metadata.\n\n"
+    "Return JSON only:\n"
+    "blockType, status, topic, summary, tags\n\n"
+    "Rules:\n"
+    "- blockType = problem | proposal | trial | result | insight\n"
+    "- status = open | neutral | failed | success\n"
+    "- topic = short and concrete\n"
+    "- summary = one sentence\n"
+    "- tags = compact object\n"
+    "- if routeDecision.action is APPEND, keep metadata aligned with the selected block unless the message clearly updates status or result\n\n"
+    "[input]\n"
+    "{{PAYLOAD_JSON}}"
 )
 
 
@@ -103,10 +103,15 @@ class LlmClient:
         base_url: Optional[str] = None,
         timeout_seconds: Optional[float] = None,
     ) -> None:
-        self.model = model or os.getenv("OLLAMA_MODEL", "qwen2.5:3b")
+        legacy_model = model or os.getenv("OLLAMA_MODEL", "qwen2.5:3b")
+        legacy_timeout = timeout_seconds or os.getenv("OLLAMA_TIMEOUT_SECONDS", "30")
+
         self.base_url = (base_url or os.getenv("OLLAMA_BASE_URL", "http://127.0.0.1:11434")).rstrip("/")
-        timeout_value = timeout_seconds or os.getenv("OLLAMA_TIMEOUT_SECONDS", "10")
-        self.timeout_seconds = float(timeout_value)
+        self.route_model = os.getenv("OLLAMA_ROUTE_MODEL", legacy_model)
+        self.metadata_model = os.getenv("OLLAMA_METADATA_MODEL", legacy_model)
+        self.route_timeout_seconds = float(os.getenv("OLLAMA_ROUTE_TIMEOUT_SECONDS", str(legacy_timeout)))
+        self.metadata_timeout_seconds = float(os.getenv("OLLAMA_METADATA_TIMEOUT_SECONDS", str(legacy_timeout)))
+        self.model = f"route:{self.route_model}|metadata:{self.metadata_model}"
 
     def decide_append_or_new(self, context: str) -> LlmDecision:
         try:
@@ -121,6 +126,8 @@ class LlmClient:
                     },
                     "required": ["action", "score", "reason"],
                 },
+                model=self.route_model,
+                timeout_seconds=self.route_timeout_seconds,
             )
             return self._parse_decision(response_text)
         except (ValueError, error.URLError, TimeoutError, OSError, json.JSONDecodeError):
@@ -134,34 +141,130 @@ class LlmClient:
         session_id: Optional[str] = None,
     ) -> NarrativeBlockClassification:
         try:
-            prompt = self._build_narrative_prompt(current_message, candidate_blocks, recent_messages, session_id)
-            response_text = self._generate_with_schema(
-                prompt,
-                {
-                    "type": "object",
-                    "properties": {
-                        "action": {"type": "string", "enum": ["APPEND", "NEW_BLOCK"]},
-                        "targetBlockId": {"type": ["string", "null"]},
-                        "blockType": {"type": "string", "enum": ["problem", "proposal", "trial", "result", "insight"]},
-                        "status": {"type": "string", "enum": ["open", "neutral", "failed", "success"]},
-                        "topic": {"type": "string"},
-                        "summary": {"type": "string"},
-                        "tags": {"type": "object"},
-                        "score": {"type": "number"},
-                        "reason": {"type": "string"},
-                    },
-                    "required": ["action", "blockType", "status", "topic", "summary", "tags", "score", "reason"],
-                },
+            route_decision = self.classify_narrative_route(
+                current_message=current_message,
+                candidate_blocks=candidate_blocks,
+                recent_messages=recent_messages,
+                session_id=session_id,
             )
-            return self._parse_narrative_classification(response_text, current_message, candidate_blocks)
         except (ValueError, error.URLError, TimeoutError, OSError, json.JSONDecodeError):
             return self._fallback_narrative_classification(current_message, candidate_blocks)
 
-    def _generate_with_schema(self, prompt: str, format_schema: Dict[str, Any]) -> str:
         try:
-            return self._generate(prompt, format_schema=format_schema)
+            metadata_decision = self.classify_narrative_metadata(
+                current_message=current_message,
+                candidate_blocks=candidate_blocks,
+                recent_messages=recent_messages,
+                session_id=session_id,
+                route_decision=route_decision,
+            )
+        except (ValueError, error.URLError, TimeoutError, OSError, json.JSONDecodeError):
+            metadata_decision = self._fallback_metadata_decision(
+                current_message=current_message,
+                candidate_blocks=candidate_blocks,
+                route_decision=route_decision,
+            )
+
+        return NarrativeBlockClassification(
+            action=route_decision.action,
+            target_block_id=route_decision.target_block_id,
+            block_type=metadata_decision.block_type,
+            status=metadata_decision.status,
+            topic=metadata_decision.topic,
+            summary=metadata_decision.summary,
+            tags=metadata_decision.tags,
+            score=route_decision.score,
+            reason=route_decision.reason,
+        )
+
+    def classify_narrative_route(
+        self,
+        current_message: Mapping[str, Any],
+        candidate_blocks: Sequence[Mapping[str, Any]],
+        recent_messages: Sequence[Mapping[str, Any]] = (),
+        session_id: Optional[str] = None,
+    ) -> NarrativeRouteDecision:
+        prompt = self._build_route_prompt(current_message, candidate_blocks, recent_messages, session_id)
+        response_text = self._generate_with_schema(
+            prompt,
+            {
+                "type": "object",
+                "properties": {
+                    "action": {"type": "string", "enum": ["APPEND", "NEW_BLOCK"]},
+                    "targetBlockId": {"type": ["string", "null"]},
+                    "score": {"type": "number"},
+                    "reason": {"type": "string"},
+                },
+                "required": ["action", "score", "reason"],
+            },
+            model=self.route_model,
+            timeout_seconds=self.route_timeout_seconds,
+        )
+        return self._parse_route_decision(response_text, candidate_blocks)
+
+    def classify_narrative_metadata(
+        self,
+        *,
+        current_message: Mapping[str, Any],
+        candidate_blocks: Sequence[Mapping[str, Any]],
+        recent_messages: Sequence[Mapping[str, Any]] = (),
+        session_id: Optional[str] = None,
+        route_decision: NarrativeRouteDecision,
+    ) -> NarrativeMetadataDecision:
+        prompt = self._build_metadata_prompt(
+            current_message=current_message,
+            candidate_blocks=candidate_blocks,
+            recent_messages=recent_messages,
+            session_id=session_id,
+            route_decision=route_decision,
+        )
+        response_text = self._generate_with_schema(
+            prompt,
+            {
+                "type": "object",
+                "properties": {
+                    "blockType": {"type": "string", "enum": ["problem", "proposal", "trial", "result", "insight"]},
+                    "status": {"type": "string", "enum": ["open", "neutral", "failed", "success"]},
+                    "topic": {"type": "string"},
+                    "summary": {"type": "string"},
+                    "tags": {"type": "object"},
+                },
+                "required": ["blockType", "status", "topic", "summary", "tags"],
+            },
+            model=self.metadata_model,
+            timeout_seconds=self.metadata_timeout_seconds,
+        )
+        return self._parse_metadata_decision(response_text)
+
+    def fallback_narrative_metadata(
+        self,
+        *,
+        current_message: Mapping[str, Any],
+        candidate_blocks: Sequence[Mapping[str, Any]],
+        route_decision: NarrativeRouteDecision,
+    ) -> NarrativeMetadataDecision:
+        return self._fallback_metadata_decision(
+            current_message=current_message,
+            candidate_blocks=candidate_blocks,
+            route_decision=route_decision,
+        )
+
+    def _generate_with_schema(
+        self,
+        prompt: str,
+        format_schema: Dict[str, Any],
+        *,
+        model: str,
+        timeout_seconds: float,
+    ) -> str:
+        try:
+            return self._generate(
+                prompt,
+                format_schema=format_schema,
+                model=model,
+                timeout_seconds=timeout_seconds,
+            )
         except TypeError:
-            # Test doubles may still implement the legacy single-arg signature.
             return self._generate(prompt)
 
     def _build_prompt(self, context: str) -> str:
@@ -172,7 +275,7 @@ class LlmClient:
         )
         return template.replace("{{CONTEXT}}", context)
 
-    def _build_narrative_prompt(
+    def _build_route_prompt(
         self,
         current_message: Mapping[str, Any],
         candidate_blocks: Sequence[Mapping[str, Any]],
@@ -186,9 +289,42 @@ class LlmClient:
             "recentMessages": [self._compact_mapping(message) for message in recent_messages],
         }
         template = self._resolve_prompt_template(
-            file_env_name="MCP_NARRATIVE_PROMPT_FILE",
-            text_env_name="MCP_NARRATIVE_PROMPT_TEMPLATE",
-            default_template=DEFAULT_NARRATIVE_PROMPT_TEMPLATE,
+            file_env_name="MCP_ROUTE_PROMPT_FILE",
+            text_env_name="MCP_ROUTE_PROMPT_TEMPLATE",
+            default_template=DEFAULT_ROUTE_PROMPT_TEMPLATE,
+            legacy_file_env_name="MCP_NARRATIVE_PROMPT_FILE",
+            legacy_text_env_name="MCP_NARRATIVE_PROMPT_TEMPLATE",
+        )
+        return template.replace("{{PAYLOAD_JSON}}", json.dumps(payload, ensure_ascii=False))
+
+    def _build_metadata_prompt(
+        self,
+        *,
+        current_message: Mapping[str, Any],
+        candidate_blocks: Sequence[Mapping[str, Any]],
+        recent_messages: Sequence[Mapping[str, Any]],
+        session_id: Optional[str],
+        route_decision: NarrativeRouteDecision,
+    ) -> str:
+        selected_candidate = None
+        if route_decision.target_block_id:
+            selected_candidate = self._find_candidate_block(candidate_blocks, route_decision.target_block_id)
+        payload = {
+            "sessionId": session_id,
+            "routeDecision": {
+                "action": route_decision.action,
+                "targetBlockId": route_decision.target_block_id,
+                "score": route_decision.score,
+                "reason": route_decision.reason,
+            },
+            "currentMessage": self._compact_mapping(current_message),
+            "selectedCandidateBlock": self._compact_candidate_block(selected_candidate) if selected_candidate else None,
+            "recentMessages": [self._compact_mapping(message) for message in recent_messages],
+        }
+        template = self._resolve_prompt_template(
+            file_env_name="MCP_METADATA_PROMPT_FILE",
+            text_env_name="MCP_METADATA_PROMPT_TEMPLATE",
+            default_template=DEFAULT_METADATA_PROMPT_TEMPLATE,
         )
         return template.replace("{{PAYLOAD_JSON}}", json.dumps(payload, ensure_ascii=False))
 
@@ -198,8 +334,12 @@ class LlmClient:
         file_env_name: str,
         text_env_name: str,
         default_template: str,
+        legacy_file_env_name: Optional[str] = None,
+        legacy_text_env_name: Optional[str] = None,
     ) -> str:
         file_path = os.getenv(file_env_name, "").strip()
+        if not file_path and legacy_file_env_name:
+            file_path = os.getenv(legacy_file_env_name, "").strip()
         if file_path:
             try:
                 loaded = self._read_prompt_file(file_path)
@@ -209,6 +349,8 @@ class LlmClient:
                 pass
 
         inline_template = os.getenv(text_env_name, "")
+        if not inline_template.strip() and legacy_text_env_name:
+            inline_template = os.getenv(legacy_text_env_name, "")
         if inline_template.strip():
             return inline_template
 
@@ -218,9 +360,16 @@ class LlmClient:
         path = Path(file_path)
         return path.read_text(encoding="utf-8").strip()
 
-    def _generate(self, prompt: str, format_schema: Optional[Dict[str, Any]] = None) -> str:
+    def _generate(
+        self,
+        prompt: str,
+        format_schema: Optional[Dict[str, Any]] = None,
+        *,
+        model: Optional[str] = None,
+        timeout_seconds: Optional[float] = None,
+    ) -> str:
         payload = {
-            "model": self.model,
+            "model": model or self.route_model,
             "prompt": prompt,
             "stream": False,
             "format": format_schema
@@ -243,7 +392,7 @@ class LlmClient:
             headers={"Content-Type": "application/json"},
             method="POST",
         )
-        with request.urlopen(req, timeout=self.timeout_seconds) as response:
+        with request.urlopen(req, timeout=timeout_seconds or self.route_timeout_seconds) as response:
             body = response.read().decode("utf-8")
         decoded = json.loads(body)
         return str(decoded.get("response", "")).strip()
@@ -262,17 +411,15 @@ class LlmClient:
         return LlmDecision(action=action, score=score, reason=reason)
 
     def _fallback_decision(self, context: str) -> LlmDecision:
-        # Deterministic fallback used when Ollama is unavailable or returns invalid JSON.
         if len(context) % 2 == 0:
             return LlmDecision(action="APPEND", score=0.55, reason="fallback_even_length")
         return LlmDecision(action="NEW_BLOCK", score=0.55, reason="fallback_odd_length")
 
-    def _parse_narrative_classification(
+    def _parse_route_decision(
         self,
         response_text: str,
-        current_message: Mapping[str, Any],
         candidate_blocks: Sequence[Mapping[str, Any]],
-    ) -> NarrativeBlockClassification:
+    ) -> NarrativeRouteDecision:
         data = self._coerce_json_object(response_text)
         action = str(data.get("action", "")).strip().upper()
         if action not in {"APPEND", "NEW_BLOCK"}:
@@ -282,27 +429,11 @@ class LlmClient:
         if target_block_id is not None:
             target_block_id = str(target_block_id).strip() or None
 
-        block_type = str(data.get("blockType", "")).strip().lower()
-        if block_type not in {"problem", "proposal", "trial", "result", "insight"}:
-            raise ValueError("invalid blockType")
-
-        status = str(data.get("status", "")).strip().lower()
-        if status not in {"open", "neutral", "failed", "success"}:
-            raise ValueError("invalid status")
-
-        topic = str(data.get("topic", "")).strip()
-        summary = str(data.get("summary", "")).strip()
-        tags = data.get("tags", {})
-        if tags is None:
-            tags = {}
-        if not isinstance(tags, dict):
-            raise ValueError("invalid tags")
-
         score = float(data.get("score", 0.0))
         if score < 0.0 or score > 1.0:
             raise ValueError("invalid score")
 
-        reason = str(data.get("reason", "")).strip() or "narrative_decision"
+        reason = str(data.get("reason", "")).strip() or "route_decision"
         if action == "APPEND" and not target_block_id:
             target_block_id = self._choose_candidate_block_id(candidate_blocks)
             if target_block_id is None:
@@ -311,16 +442,50 @@ class LlmClient:
         if action == "NEW_BLOCK":
             target_block_id = None
 
-        return NarrativeBlockClassification(
+        return NarrativeRouteDecision(
             action=action,
             target_block_id=target_block_id,
-            block_type=block_type,
-            status=status,
-            topic=topic or self._infer_topic(current_message),
-            summary=summary or self._short_text(current_message.get("content", "")),
-            tags=tags,
             score=score,
             reason=reason,
+        )
+
+    def _parse_metadata_decision(self, response_text: str) -> NarrativeMetadataDecision:
+        data = self._coerce_json_object(response_text)
+        return NarrativeMetadataDecision(
+            block_type=self._normalize_block_type(self._stringify(data.get("blockType"))),
+            status=self._normalize_status(self._stringify(data.get("status"))),
+            topic=self._stringify(data.get("topic")),
+            summary=self._stringify(data.get("summary")),
+            tags=self._coerce_dict(data.get("tags")),
+        )
+
+    def _fallback_metadata_decision(
+        self,
+        *,
+        current_message: Mapping[str, Any],
+        candidate_blocks: Sequence[Mapping[str, Any]],
+        route_decision: NarrativeRouteDecision,
+    ) -> NarrativeMetadataDecision:
+        candidate = None
+        if route_decision.action == "APPEND" and route_decision.target_block_id:
+            candidate = self._find_candidate_block(candidate_blocks, route_decision.target_block_id)
+        if candidate is not None:
+            block_type = self._normalize_block_type(self._stringify(candidate.get("blockType")))
+            return NarrativeMetadataDecision(
+                block_type=block_type,
+                status=self._normalize_status(self._stringify(candidate.get("status"))),
+                topic=self._stringify(candidate.get("topic")) or self._infer_topic(current_message),
+                summary=self._stringify(candidate.get("summary")) or self._short_text(current_message.get("content", "")),
+                tags=self._coerce_dict(candidate.get("tags")) or self._infer_tags(current_message, block_type),
+            )
+
+        block_type = self._infer_block_type(current_message)
+        return NarrativeMetadataDecision(
+            block_type=block_type,
+            status=self._infer_status(current_message, block_type),
+            topic=self._infer_topic(current_message),
+            summary=self._short_text(current_message.get("content", "")),
+            tags=self._infer_tags(current_message, block_type),
         )
 
     def _fallback_narrative_classification(
@@ -328,16 +493,24 @@ class LlmClient:
         current_message: Mapping[str, Any],
         candidate_blocks: Sequence[Mapping[str, Any]],
     ) -> NarrativeBlockClassification:
-        inferred_block_type = self._infer_block_type(current_message)
-        inferred_status = "open" if inferred_block_type == "problem" else "neutral"
+        metadata = self._fallback_metadata_decision(
+            current_message=current_message,
+            candidate_blocks=candidate_blocks,
+            route_decision=NarrativeRouteDecision(
+                action="NEW_BLOCK",
+                target_block_id=None,
+                score=0.5,
+                reason="fallback_conservative_new_block",
+            ),
+        )
         return NarrativeBlockClassification(
             action="NEW_BLOCK",
             target_block_id=None,
-            block_type=inferred_block_type,
-            status=inferred_status,
-            topic=self._infer_topic(current_message),
-            summary=self._short_text(current_message.get("content", "")),
-            tags=self._infer_tags(current_message, inferred_block_type),
+            block_type=metadata.block_type,
+            status=metadata.status,
+            topic=metadata.topic,
+            summary=metadata.summary,
+            tags=metadata.tags,
             score=0.5,
             reason="fallback_conservative_new_block",
         )
@@ -390,7 +563,19 @@ class LlmClient:
             return None
         return self._stringify(candidate.get("blockId")) or None
 
-    def _compact_candidate_block(self, block: Mapping[str, Any]) -> Dict[str, Any]:
+    def _find_candidate_block(
+        self,
+        candidate_blocks: Sequence[Mapping[str, Any]],
+        block_id: str,
+    ) -> Optional[Mapping[str, Any]]:
+        for candidate in candidate_blocks:
+            if self._stringify(candidate.get("blockId")) == block_id:
+                return candidate
+        return None
+
+    def _compact_candidate_block(self, block: Optional[Mapping[str, Any]]) -> Optional[Dict[str, Any]]:
+        if block is None:
+            return None
         return {
             "blockId": self._stringify(block.get("blockId")),
             "topic": self._stringify(block.get("topic")),
@@ -475,6 +660,16 @@ class LlmClient:
             return "proposal"
         return "problem"
 
+    def _infer_status(self, current_message: Mapping[str, Any], block_type: str) -> str:
+        content = self._stringify(current_message.get("content")).lower()
+        if block_type == "result":
+            if any(keyword in content for keyword in ("fail", "failed", "error", "broken", "did not", "didn't", "not work")):
+                return "failed"
+            return "success"
+        if block_type == "problem":
+            return "open"
+        return "neutral"
+
     def _infer_tags(self, current_message: Mapping[str, Any], block_type: str) -> Dict[str, object]:
         content = self._short_text(current_message.get("content"))
         if block_type == "result":
@@ -486,3 +681,9 @@ class LlmClient:
         if block_type == "insight":
             return {"root_cause": content, "lesson": ""}
         return {"problem": content}
+
+    def _normalize_block_type(self, value: str) -> str:
+        return value if value in {"problem", "proposal", "trial", "result", "insight"} else "proposal"
+
+    def _normalize_status(self, value: str) -> str:
+        return value if value in {"open", "neutral", "failed", "success"} else "neutral"
