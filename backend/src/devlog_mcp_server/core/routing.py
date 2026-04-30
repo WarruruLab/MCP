@@ -5,6 +5,7 @@ import hashlib
 import re
 from typing import Any, Dict, List, Mapping, Optional, Sequence, Set, Tuple
 
+from devlog_mcp_server.utils.env import env_float, env_int
 from devlog_mcp_server.utils.validate import normalize_role
 
 
@@ -328,10 +329,16 @@ def route_message(
     candidate_blocks: Sequence[Mapping[str, Any] | NarrativeBlock],
     recent_messages: Sequence[Mapping[str, Any] | NarrativeMessage],
     *,
-    append_threshold: float = 0.40,
-    tail_limit: int = 6,
+    append_threshold: Optional[float] = None,
+    tail_limit: Optional[int] = None,
     existing_message_to_block: Optional[Mapping[str, str]] = None,
 ) -> RoutingResult:
+    resolved_append_threshold = (
+        env_float("MCP_ROUTING_APPEND_THRESHOLD", 0.40)
+        if append_threshold is None
+        else append_threshold
+    )
+    resolved_tail_limit = env_int("MCP_ROUTING_TAIL_LIMIT", 6) if tail_limit is None else tail_limit
     message = coerce_message(current_message)
     candidates = [coerce_block(block) for block in candidate_blocks]
     recent = [coerce_message(message_item) for message_item in recent_messages]
@@ -384,7 +391,7 @@ def route_message(
     scored_candidates = rank_candidate_blocks(message, profile, candidates, recent)
     best_candidate = scored_candidates[0] if scored_candidates else None
 
-    if best_candidate is not None and best_candidate.score >= append_threshold:
+    if best_candidate is not None and best_candidate.score >= resolved_append_threshold:
         updated_blocks: List[NarrativeBlock] = []
         selected_block_id = best_candidate.block_id
         selected_block = get_block_by_id(candidates, selected_block_id)
@@ -410,7 +417,7 @@ def route_message(
                     block,
                     message,
                     profile,
-                    tail_limit=tail_limit,
+                    tail_limit=resolved_tail_limit,
                 )
             )
         message_to_block[message.message_id] = selected_block_id
@@ -422,7 +429,7 @@ def route_message(
             decision=decision,
         )
 
-    new_block = _create_new_block(session_id, candidates, message, profile, tail_limit=tail_limit)
+    new_block = _create_new_block(session_id, candidates, message, profile, tail_limit=resolved_tail_limit)
     updated_blocks = [block.clone() for block in candidates] + [new_block]
     message_to_block[message.message_id] = new_block.block_id
     decision = RoutingDecision(

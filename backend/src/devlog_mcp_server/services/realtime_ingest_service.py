@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 from typing import Any, Dict, List, Optional
 from urllib import error
 
@@ -32,12 +33,12 @@ class RealtimeIngestService:
         devlog_client: Optional[DevLogClient] = None,
         *,
         event_store: Optional[DevLogEventStore] = None,
-        analysis_version: str = "realtime-v1",
+        analysis_version: Optional[str] = None,
     ) -> None:
         self.llm_client = llm_client
         self.devlog_client = devlog_client
         self.event_store = event_store or InMemoryEventStore()
-        self.analysis_version = analysis_version
+        self.analysis_version = analysis_version or os.getenv("MCP_ANALYSIS_VERSION", "realtime-v1")
 
     def ingest_message(self, request: IngestMessageRequestDTO) -> IngestMessageResponseDTO:
         return self.handle_message(request)

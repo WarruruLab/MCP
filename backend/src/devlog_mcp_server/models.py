@@ -5,6 +5,8 @@ from typing import Any, Dict, List, Optional
 
 from pydantic import BaseModel, Field
 
+from devlog_mcp_server.utils.env import env_int
+
 
 class MessageDTO(BaseModel):
     messageId: str
@@ -68,8 +70,8 @@ class CandidateBlockContextDTO(NarrativeBlockBaseDTO):
 
 
 class IngestMessageOptionsDTO(BaseModel):
-    maxRecentMessages: int = 8
-    maxCandidateBlocks: int = 8
+    maxRecentMessages: int = Field(default_factory=lambda: env_int("MCP_DEFAULT_MAX_RECENT_MESSAGES", 8))
+    maxCandidateBlocks: int = Field(default_factory=lambda: env_int("MCP_DEFAULT_MAX_CANDIDATE_BLOCKS", 8))
 
 
 class BlockRoutingDecisionDTO(BaseModel):

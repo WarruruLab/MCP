@@ -7,6 +7,8 @@ from pathlib import Path
 from typing import Any, Dict, List, Mapping, Optional, Sequence
 from urllib import error, request
 
+from devlog_mcp_server.utils.env import env_float
+
 
 @dataclass
 class LlmDecision:
@@ -111,6 +113,8 @@ class LlmClient:
         self.metadata_model = os.getenv("OLLAMA_METADATA_MODEL", legacy_model)
         self.route_timeout_seconds = float(os.getenv("OLLAMA_ROUTE_TIMEOUT_SECONDS", str(legacy_timeout)))
         self.metadata_timeout_seconds = float(os.getenv("OLLAMA_METADATA_TIMEOUT_SECONDS", str(legacy_timeout)))
+        self.route_temperature = env_float("OLLAMA_ROUTE_TEMPERATURE", 0.0)
+        self.metadata_temperature = env_float("OLLAMA_METADATA_TEMPERATURE", 0.0)
         self.model = f"route:{self.route_model}|metadata:{self.metadata_model}"
 
     def decide_append_or_new(self, context: str) -> LlmDecision:
@@ -128,6 +132,7 @@ class LlmClient:
                 },
                 model=self.route_model,
                 timeout_seconds=self.route_timeout_seconds,
+                temperature=self.route_temperature,
             )
             return self._parse_decision(response_text)
         except (ValueError, error.URLError, TimeoutError, OSError, json.JSONDecodeError):
@@ -199,6 +204,7 @@ class LlmClient:
             },
             model=self.route_model,
             timeout_seconds=self.route_timeout_seconds,
+            temperature=self.route_temperature,
         )
         return self._parse_route_decision(response_text, candidate_blocks)
 
@@ -233,6 +239,7 @@ class LlmClient:
             },
             model=self.metadata_model,
             timeout_seconds=self.metadata_timeout_seconds,
+            temperature=self.metadata_temperature,
         )
         return self._parse_metadata_decision(response_text)
 
@@ -256,6 +263,7 @@ class LlmClient:
         *,
         model: str,
         timeout_seconds: float,
+        temperature: float,
     ) -> str:
         try:
             return self._generate(
@@ -263,6 +271,7 @@ class LlmClient:
                 format_schema=format_schema,
                 model=model,
                 timeout_seconds=timeout_seconds,
+                temperature=temperature,
             )
         except TypeError:
             return self._generate(prompt)
@@ -367,6 +376,7 @@ class LlmClient:
         *,
         model: Optional[str] = None,
         timeout_seconds: Optional[float] = None,
+        temperature: Optional[float] = None,
     ) -> str:
         payload = {
             "model": model or self.route_model,
@@ -383,7 +393,7 @@ class LlmClient:
                 "required": ["action", "score", "reason"],
             },
             "options": {
-                "temperature": 0,
+                "temperature": self.route_temperature if temperature is None else temperature,
             },
         }
         req = request.Request(
