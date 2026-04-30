@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field, replace
+import hashlib
 import re
 from typing import Any, Dict, List, Mapping, Optional, Sequence, Set, Tuple
 
@@ -256,6 +257,18 @@ def apply_routing_decision(
             decision=resolved,
         )
 
+    existing_message_block_id = _find_existing_message_block_id(message, candidates)
+    if existing_message_block_id is not None:
+        if message.message_id:
+            message_to_block[message.message_id] = existing_message_block_id
+        return RoutingResult(
+            session_id=session_id,
+            blocks=[block.clone() for block in candidates],
+            message_to_block=message_to_block,
+            active_block_id=existing_message_block_id,
+            decision=resolved,
+        )
+
     if resolved.action == "APPEND" and resolved.target_block_id:
         updated_blocks: List[NarrativeBlock] = []
         appended = False
@@ -342,6 +355,28 @@ def route_message(
             blocks=blocks,
             message_to_block=message_to_block,
             active_block_id=message_to_block[message.message_id],
+            decision=decision,
+        )
+
+    existing_message_block_id = _find_existing_message_block_id(message, candidates)
+    if existing_message_block_id is not None:
+        message_to_block[message.message_id] = existing_message_block_id
+        decision = RoutingDecision(
+            action="APPEND",
+            target_block_id=existing_message_block_id,
+            score=1.0,
+            reason="already_routed",
+            block_type="proposal",
+            status="neutral",
+            topic="",
+            summary="",
+            tags={},
+        )
+        return RoutingResult(
+            session_id=session_id,
+            blocks=[block.clone() for block in candidates],
+            message_to_block=message_to_block,
+            active_block_id=existing_message_block_id,
             decision=decision,
         )
 
@@ -516,7 +551,7 @@ def _create_new_block(
     *,
     tail_limit: int,
 ) -> NarrativeBlock:
-    block_id = _build_block_id(session_id, existing_blocks)
+    block_id = _build_block_id(session_id, message, existing_blocks)
     tags = _clone_mapping(profile["tags"])
     return NarrativeBlock(
         block_id=block_id,
@@ -543,7 +578,7 @@ def _create_new_block_from_decision(
     *,
     tail_limit: int,
 ) -> NarrativeBlock:
-    block_id = _build_block_id(session_id, existing_blocks)
+    block_id = _build_block_id(session_id, message, existing_blocks)
     return NarrativeBlock(
         block_id=block_id,
         session_id=session_id,
@@ -647,16 +682,57 @@ def get_block_by_id(blocks: Sequence[NarrativeBlock], block_id: str) -> Narrativ
     raise KeyError(block_id)
 
 
-def _build_block_id(session_id: str, blocks: Sequence[NarrativeBlock]) -> str:
-    prefix = f"blk_{session_id}_"
-    max_suffix = 0
+def _find_existing_message_block_id(
+    message: NarrativeMessage,
+    blocks: Sequence[NarrativeBlock],
+) -> Optional[str]:
+    if not message.message_id:
+        return None
     for block in blocks:
-        if not block.block_id.startswith(prefix):
-            continue
-        suffix = block.block_id[len(prefix) :]
-        if suffix.isdigit():
-            max_suffix = max(max_suffix, int(suffix))
-    return f"{prefix}{max_suffix + 1}"
+        if message.message_id in block.message_ids:
+            return block.block_id
+    return None
+
+
+def _build_block_id(
+    session_id: str,
+    message: NarrativeMessage,
+    blocks: Sequence[NarrativeBlock],
+) -> str:
+    base = f"blk_{_safe_block_id_segment(session_id)}_{_safe_block_id_segment(message.message_id)}"
+    existing_ids = {block.block_id for block in blocks}
+    if base not in existing_ids:
+        return base
+
+    seed = f"{session_id}\n{message.message_id}\nnew-block-collision"
+    digest = hashlib.sha256(seed.encode("utf-8")).hexdigest()[:12]
+    candidate = f"{base}_{digest}"
+    if candidate not in existing_ids:
+        return candidate
+
+    counter = 2
+    while True:
+        candidate = f"{base}_{digest}_{counter}"
+        if candidate not in existing_ids:
+            return candidate
+        counter += 1
+
+
+def _safe_block_id_segment(value: str, *, max_length: int = 48) -> str:
+    raw = str(value or "").strip()
+    normalized = re.sub(r"[^A-Za-z0-9_-]+", "_", raw)
+    normalized = re.sub(r"_+", "_", normalized).strip("_-")
+    if not normalized:
+        normalized = "empty"
+
+    needs_hash = normalized != raw or len(normalized) > max_length
+    if not needs_hash:
+        return normalized
+
+    digest = hashlib.sha256(raw.encode("utf-8")).hexdigest()[:10]
+    prefix_length = max_length - len(digest) - 1
+    prefix = normalized[: max(1, prefix_length)].strip("_-") or "id"
+    return f"{prefix}_{digest}"
 
 
 def _block_search_text(block: NarrativeBlock) -> str:

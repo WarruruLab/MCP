@@ -7,11 +7,19 @@ from urllib import error, request
 
 
 class DevLogRequestError(RuntimeError):
-    def __init__(self, status_code: int, message: str, *, retriable: bool | None = None) -> None:
+    def __init__(
+        self,
+        status_code: int,
+        message: str,
+        *,
+        retriable: bool | None = None,
+        response_payload: Optional[Dict[str, Any]] = None,
+    ) -> None:
         super().__init__(message)
         self.status_code = status_code
         self.message = message
         self.retriable = retriable if retriable is not None else (status_code == 0 or status_code >= 500)
+        self.response_payload = dict(response_payload or {})
 
 
 class DevLogClient:
@@ -84,6 +92,22 @@ class DevLogClient:
                 return None
             error_body = exc.read().decode("utf-8", errors="replace").strip()
             message = error_body or exc.reason or "DevLog request failed"
-            raise DevLogRequestError(exc.code, message, retriable=exc.code >= 500) from exc
+            response_payload = _parse_json_object(error_body)
+            raise DevLogRequestError(
+                exc.code,
+                message,
+                retriable=exc.code >= 500,
+                response_payload=response_payload,
+            ) from exc
         except error.URLError as exc:
             raise DevLogRequestError(0, str(exc.reason), retriable=True) from exc
+
+
+def _parse_json_object(value: str) -> Dict[str, Any]:
+    if not value:
+        return {}
+    try:
+        payload = json.loads(value)
+    except json.JSONDecodeError:
+        return {}
+    return payload if isinstance(payload, dict) else {}

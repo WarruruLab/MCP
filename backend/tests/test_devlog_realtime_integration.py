@@ -48,9 +48,15 @@ class FakeLlmClient:
 
 
 class FakeDevLogClient:
-    def __init__(self, active_block: dict | None, send_error: DevLogRequestError | None = None) -> None:
+    def __init__(
+        self,
+        active_block: dict | None,
+        send_error: DevLogRequestError | None = None,
+        send_response: dict | None = None,
+    ) -> None:
         self.active_block = active_block
         self.send_error = send_error
+        self.send_response = send_response
         self.sent_events: list[dict] = []
 
     def get_active_block(self, session_id: str) -> dict | None:
@@ -62,6 +68,8 @@ class FakeDevLogClient:
         if self.send_error is not None:
             raise self.send_error
         self.sent_events.append(payload)
+        if self.send_response is not None:
+            return dict(self.send_response)
         return {
             "sessionId": payload["sessionId"],
             "eventId": payload["eventId"],
@@ -213,6 +221,93 @@ class DevLogRealtimeIntegrationTests(unittest.TestCase):
         self.assertFalse(record.retriable)
         self.assertIn("status=400", record.lastError)
         self.assertEqual(1, record.attemptCount)
+        self.assertEqual(DevLogEventDeliveryState.FAILED, record.deliveryState)
+
+    def test_duplicate_create_recovery_response_marks_event_delivered(self) -> None:
+        event_store = InMemoryEventStore()
+        service = RealtimeIngestService(
+            llm_client=FakeLlmClient(action="NEW_BLOCK", target_block_id=None),
+            devlog_client=FakeDevLogClient(
+                active_block=None,
+                send_response={
+                    "sessionId": "sess_1",
+                    "eventId": "evt-sess_1-msg_10-create_block",
+                    "status": "IGNORED",
+                    "targetBlockId": "blk_sess_1_msg_10",
+                    "blockId": 330,
+                },
+            ),
+            event_store=event_store,
+        )
+
+        response = service.ingest_message(_make_request([]))
+
+        self.assertIsNotNone(response.devlog)
+        dispatched = response.devlog.dispatchedEvents[0]
+        self.assertEqual("IGNORED", dispatched.status)
+        self.assertEqual("blk_sess_1_msg_10", dispatched.targetBlockId)
+        self.assertEqual(330, dispatched.blockId)
+
+        record = event_store.get("evt-sess_1-msg_10-create_block")
+        self.assertIsNotNone(record)
+        self.assertEqual("IGNORED", record.lastStatus)
+        self.assertFalse(record.retriable)
+        self.assertEqual(DevLogEventDeliveryState.DELIVERED, record.deliveryState)
+
+    def test_duplicate_create_recovery_http_conflict_is_treated_as_success(self) -> None:
+        event_store = InMemoryEventStore()
+        service = RealtimeIngestService(
+            llm_client=FakeLlmClient(action="NEW_BLOCK", target_block_id=None),
+            devlog_client=FakeDevLogClient(
+                active_block=None,
+                send_error=DevLogRequestError(
+                    409,
+                    "block already exists",
+                    response_payload={
+                        "sessionId": "sess_1",
+                        "eventId": "evt-sess_1-msg_10-create_block",
+                        "status": "APPLIED",
+                        "targetBlockId": "blk_sess_1_msg_10",
+                        "blockId": 331,
+                    },
+                ),
+            ),
+            event_store=event_store,
+        )
+
+        response = service.ingest_message(_make_request([]))
+
+        self.assertIsNotNone(response.devlog)
+        dispatched = response.devlog.dispatchedEvents[0]
+        self.assertEqual("APPLIED", dispatched.status)
+        self.assertEqual("blk_sess_1_msg_10", dispatched.targetBlockId)
+        self.assertEqual(331, dispatched.blockId)
+
+        record = event_store.get("evt-sess_1-msg_10-create_block")
+        self.assertIsNotNone(record)
+        self.assertEqual("APPLIED", record.lastStatus)
+        self.assertFalse(record.retriable)
+        self.assertIsNone(record.lastError)
+        self.assertEqual(DevLogEventDeliveryState.DELIVERED, record.deliveryState)
+
+    def test_devlog_409_without_recovery_payload_marks_event_as_non_retriable(self) -> None:
+        event_store = InMemoryEventStore()
+        service = RealtimeIngestService(
+            llm_client=FakeLlmClient(action="NEW_BLOCK", target_block_id=None),
+            devlog_client=FakeDevLogClient(
+                active_block=None,
+                send_error=DevLogRequestError(409, "message mapped to another block"),
+            ),
+            event_store=event_store,
+        )
+
+        with self.assertRaises(DevLogRequestError):
+            service.ingest_message(_make_request([]))
+
+        record = event_store.get("evt-sess_1-msg_10-create_block")
+        self.assertIsNotNone(record)
+        self.assertEqual("409", record.lastStatus)
+        self.assertFalse(record.retriable)
         self.assertEqual(DevLogEventDeliveryState.FAILED, record.deliveryState)
 
     def test_devlog_5xx_marks_event_as_retriable(self) -> None:

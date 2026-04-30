@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import unittest
 
+from devlog_mcp_server.core.routing import apply_routing_decision
 from devlog_mcp_server.llm.client import LlmClient
 from devlog_mcp_server.models import (
     BlockAction,
@@ -302,6 +303,126 @@ class RealtimeNarrativeContractTests(unittest.TestCase):
         self.assertEqual("trial", result.block_type)
         self.assertEqual("neutral", result.status)
         self.assertEqual("Let's check the timeout again.", result.summary)
+
+    def test_new_block_id_is_deterministic_from_session_and_message_id(self) -> None:
+        current_message = {
+            "messageId": "msg_10",
+            "role": "user",
+            "content": "Create a new block for this attempt.",
+            "timestamp": "2026-04-01T10:00:00Z",
+        }
+        decision = {
+            "action": "NEW_BLOCK",
+            "blockType": "trial",
+            "status": "neutral",
+            "topic": "Timeout retry",
+            "summary": "Retry timeout handling.",
+            "score": 0.9,
+            "reason": "new_attempt",
+        }
+
+        first = apply_routing_decision("sess_1", current_message, [], decision)
+        second = apply_routing_decision("sess_1", current_message, [], decision)
+
+        self.assertEqual("blk_sess_1_msg_10", first.active_block_id)
+        self.assertEqual(first.active_block_id, second.active_block_id)
+        self.assertEqual(["msg_10"], first.blocks[0].message_ids)
+
+    def test_new_block_id_normalizes_unsafe_and_long_values(self) -> None:
+        long_message_id = "message/" + ("abc:" * 30)
+        result = apply_routing_decision(
+            "세션/with spaces/and/symbols",
+            {
+                "messageId": long_message_id,
+                "role": "user",
+                "content": "Create a new block for unsafe ids.",
+                "timestamp": "2026-04-01T10:00:00Z",
+            },
+            [],
+            {
+                "action": "NEW_BLOCK",
+                "blockType": "trial",
+                "status": "neutral",
+                "topic": "Unsafe ids",
+                "summary": "Normalize ids.",
+                "score": 0.9,
+                "reason": "new_attempt",
+            },
+        )
+
+        self.assertRegex(result.active_block_id or "", r"^blk_[A-Za-z0-9_-]+_[A-Za-z0-9_-]+$")
+        self.assertLessEqual(len(result.active_block_id or ""), 105)
+
+    def test_new_block_id_collision_uses_deterministic_suffix(self) -> None:
+        current_message = {
+            "messageId": "msg_10",
+            "role": "user",
+            "content": "Create a new block despite a stale collision.",
+            "timestamp": "2026-04-01T10:00:00Z",
+        }
+        existing_blocks = [
+            {
+                "blockId": "blk_sess_1_msg_10",
+                "sessionId": "sess_1",
+                "topic": "Existing stale block",
+                "blockType": "trial",
+                "status": "neutral",
+                "summary": "Existing block.",
+                "messageIds": ["msg_9"],
+            }
+        ]
+        decision = {
+            "action": "NEW_BLOCK",
+            "blockType": "trial",
+            "status": "neutral",
+            "topic": "Collision handling",
+            "summary": "Resolve deterministic collision.",
+            "score": 0.9,
+            "reason": "new_attempt",
+        }
+
+        first = apply_routing_decision("sess_1", current_message, existing_blocks, decision)
+        second = apply_routing_decision("sess_1", current_message, existing_blocks, decision)
+
+        self.assertNotEqual("blk_sess_1_msg_10", first.active_block_id)
+        self.assertRegex(first.active_block_id or "", r"^blk_sess_1_msg_10_[0-9a-f]{12}$")
+        self.assertEqual(first.active_block_id, second.active_block_id)
+
+    def test_rerouted_same_message_uses_existing_candidate_block_id(self) -> None:
+        current_message = {
+            "messageId": "msg_10",
+            "role": "user",
+            "content": "This message was already routed.",
+            "timestamp": "2026-04-01T10:00:00Z",
+        }
+
+        result = apply_routing_decision(
+            "sess_1",
+            current_message,
+            [
+                {
+                    "blockId": "blk_sess_1_msg_10",
+                    "sessionId": "sess_1",
+                    "topic": "Existing block",
+                    "blockType": "trial",
+                    "status": "neutral",
+                    "summary": "Already routed.",
+                    "messageIds": ["msg_10"],
+                }
+            ],
+            {
+                "action": "NEW_BLOCK",
+                "blockType": "trial",
+                "status": "neutral",
+                "topic": "Should not duplicate",
+                "summary": "Already routed.",
+                "score": 0.9,
+                "reason": "new_attempt",
+            },
+        )
+
+        self.assertEqual("blk_sess_1_msg_10", result.active_block_id)
+        self.assertEqual(1, len(result.blocks))
 
 
 if __name__ == "__main__":

@@ -271,25 +271,23 @@ class RealtimeIngestService:
 
         try:
             response_payload = self.devlog_client.send_block_event(payload)
-            response = (
-                DevLogBlockEventResponseDTO(**response_payload)
-                if response_payload
-                else DevLogBlockEventResponseDTO(
-                    sessionId=session_id,
-                    eventId=event.eventId,
-                    status="OK",
-                    targetBlockId=target_block_id,
-                )
-            )
-            self.event_store.mark_success(event.eventId, last_status=response.status or "OK")
-            return DevLogEventDispatchDTO(
+            return self._mark_event_delivered(
+                event_id=event.eventId,
                 operation=operation,
-                eventId=event.eventId,
-                status=response.status,
-                targetBlockId=response.targetBlockId or target_block_id,
-                blockId=response.blockId,
+                session_id=session_id,
+                target_block_id=target_block_id,
+                response_payload=response_payload,
             )
         except DevLogRequestError as exc:
+            recovery_payload = self._coerce_recovery_payload(exc.status_code, exc.response_payload)
+            if recovery_payload is not None:
+                return self._mark_event_delivered(
+                    event_id=event.eventId,
+                    operation=operation,
+                    session_id=session_id,
+                    target_block_id=target_block_id,
+                    response_payload=recovery_payload,
+                )
             self.event_store.mark_failure(
                 event.eventId,
                 error=f"status={exc.status_code}: {exc.message}",
@@ -316,6 +314,44 @@ class RealtimeIngestService:
                 }
             )
         return candidate_block_payloads
+
+    def _mark_event_delivered(
+        self,
+        *,
+        event_id: str,
+        operation: str,
+        session_id: str,
+        target_block_id: str,
+        response_payload: Dict[str, Any],
+    ) -> DevLogEventDispatchDTO:
+        response = (
+            DevLogBlockEventResponseDTO(**response_payload)
+            if response_payload
+            else DevLogBlockEventResponseDTO(
+                sessionId=session_id,
+                eventId=event_id,
+                status="OK",
+                targetBlockId=target_block_id,
+            )
+        )
+        self.event_store.mark_success(event_id, last_status=response.status or "OK")
+        return DevLogEventDispatchDTO(
+            operation=operation,
+            eventId=event_id,
+            status=response.status,
+            targetBlockId=response.targetBlockId or target_block_id,
+            blockId=response.blockId,
+        )
+
+    def _coerce_recovery_payload(self, status_code: int, payload: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+        if status_code != 409:
+            return None
+        if not isinstance(payload, dict) or not payload:
+            return None
+        status = str(payload.get("status", "")).strip().upper()
+        if status not in {"APPLIED", "IGNORED"}:
+            return None
+        return payload
 
     def _build_dispatch_record(
         self,
